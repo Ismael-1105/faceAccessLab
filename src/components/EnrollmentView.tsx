@@ -5,6 +5,7 @@ import {
   Image as ImageIcon, UploadSimple, Scan, Fingerprint, WarningOctagon
 } from '@phosphor-icons/react';
 import type { Student } from '../types.ts';
+import ConfirmDialog from './ConfirmDialog.tsx';
 
 interface EnrollmentViewProps {
   onComplete: (student: Student) => void;
@@ -38,6 +39,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   const [isCapturing, setIsCapturing] = useState(false);
   const [webcamError, setWebcamError] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -105,6 +107,16 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     onComplete(student);
   };
 
+  const hasEnteredData = name.trim().length > 0 || career.trim().length > 0 || capturedImage !== null;
+
+  const handleCancel = () => {
+    if (hasEnteredData) {
+      setConfirmCancelOpen(true);
+    } else {
+      onCancel();
+    }
+  };
+
   const canGoNext = () => {
     if (step === 0) return name.trim().length > 0 && career.trim().length > 0;
     if (step === 1) return capturedImage !== null;
@@ -125,11 +137,11 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
           </div>
           <div>
             <h3 className="font-bold text-sm text-zinc-900 dark:text-white">Matriculación Biométrica</h3>
-            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Registro de nuevo alumno</p>
+            <p className="text-label text-zinc-400 dark:text-zinc-500">Registro de nuevo alumno</p>
           </div>
         </div>
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
         >
           <X className="w-4 h-4" weight="bold" />
@@ -142,19 +154,19 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
           <div key={s.label} className="flex-1 flex items-center">
             <div className={`flex items-center gap-2 ${i <= step ? 'text-accent-600 dark:text-accent-400' : 'text-zinc-300 dark:text-zinc-600'}`}>
               {i < step ? (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all bg-accent-600 text-white">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-accent-600 text-white">
                   <CheckCircle className="w-3.5 h-3.5" weight="fill" />
                 </div>
               ) : i === step ? (
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-all bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 border-2 border-accent-600 dark:border-accent-400">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 border-2 border-accent-600 dark:border-accent-400">
                   {i + 1}
                 </div>
               ) : (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600">
                   {i + 1}
                 </div>
               )}
-              <span className="text-[10px] font-semibold hidden sm:inline">{s.label}</span>
+              <span className="text-label font-semibold hidden sm:inline">{s.label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className={`flex-1 h-px mx-3 ${i < step ? 'bg-accent-600' : 'bg-zinc-200 dark:bg-zinc-700'}`} />
@@ -177,7 +189,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
             {step === 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Nombre completo</label>
+                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Nombre completo</label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                     <input type="text" required placeholder="Ej. Sofia Villarreal"
@@ -186,7 +198,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Carrera</label>
+                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Carrera</label>
                   <div className="relative">
                     <StudentIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                     <input type="text" required placeholder="Ej. Ingeniería de Sistemas"
@@ -195,7 +207,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Laboratorio</label>
+                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Laboratorio</label>
                   <div className="relative">
                     <Flask className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4 z-10" weight="regular" />
                     <select value={lab} onChange={e => setLab(e.target.value)}
@@ -214,7 +226,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   {useWebcam ? (
                     <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover cursor-crosshair" />
                   ) : capturedImage ? (
-                    <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
+                    <img src={capturedImage} alt="Captura realizada" className="w-full h-full object-cover" />
                   ) : isCapturing ? (
                     <div className="flex flex-col items-center gap-3 text-zinc-400">
                       <Scan className="w-10 h-10 animate-pulse" weight="regular" />
@@ -263,7 +275,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   )}
                 </div>
 
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 text-center">
+                <p className="text-label text-zinc-400 dark:text-zinc-500 text-center">
                   La captura se almacenará de forma segura en Amazon S3 con cifrado AES-256.
                 </p>
 
@@ -271,8 +283,8 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   <div className="mt-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-3 flex items-start gap-2.5">
                     <WarningOctagon className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" weight="fill" />
                     <div>
-                      <p className="text-[11px] font-semibold text-red-700 dark:text-red-400">No se pudo acceder a la cámara</p>
-                      <p className="text-[10px] text-red-600 dark:text-red-400/80 mt-0.5">Verifica que los permisos de cámara estén habilitados en tu navegador.</p>
+                      <p className="text-caption font-semibold text-red-700 dark:text-red-400">No se pudo acceder a la cámara</p>
+                      <p className="text-label text-red-600 dark:text-red-400/80 mt-0.5">Verifica que los permisos de cámara estén habilitados en tu navegador.</p>
                     </div>
                   </div>
                 )}
@@ -285,7 +297,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                 <div className="flex items-center gap-4 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700">
                   <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-200 dark:bg-zinc-700 flex-shrink-0">
                     {capturedImage ? (
-                      <img src={capturedImage} alt="Preview" className="w-full h-full object-cover" />
+                      <img src={capturedImage} alt="Vista previa" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-zinc-400">
                         <User className="w-6 h-6" weight="regular" />
@@ -295,7 +307,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   <div className="space-y-0.5">
                     <p className="text-sm font-bold text-zinc-900 dark:text-white">{name || 'Sin nombre'}</p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">{career || 'Sin carrera'}</p>
-                    <p className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">{lab} · Umbral {matchPct}%</p>
+                    <p className="text-label font-mono text-zinc-400 dark:text-zinc-500">{lab} · Umbral {matchPct}%</p>
                   </div>
                 </div>
 
@@ -309,7 +321,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                     { label: 'Foto capturada', value: capturedImage ? 'Sí' : 'No (usará default)' },
                   ].map(({ label, value, badge }) => (
                     <div key={label} className="p-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
-                      <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase">{label}</p>
+                      <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">{label}</p>
                       <p className={`text-xs font-bold mt-0.5 text-zinc-900 dark:text-white ${badge ? 'text-green-600 dark:text-green-400' : ''}`}>
                         {value || <span className="text-zinc-400">—</span>}
                       </p>
@@ -318,7 +330,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                 </div>
 
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl">
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                  <p className="text-label text-amber-700 dark:text-amber-400 font-medium">
                     Al confirmar, se generará un perfil biométrico seguro. El alumno podrá acceder al laboratorio inmediatamente.
                   </p>
                 </div>
@@ -331,7 +343,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
       {/* Footer */}
       <div className="flex items-center justify-between px-5 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
         <button
-          onClick={step === 0 ? onCancel : () => setStep((step - 1) as StepIndex)}
+          onClick={step === 0 ? handleCancel : () => setStep((step - 1) as StepIndex)}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
@@ -356,6 +368,18 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
           </button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmCancelOpen}
+        title="Descartar registro"
+        message="Los datos ingresados se perderán si cancelas la matriculación. ¿Deseas continuar?"
+        confirmLabel="Descartar"
+        cancelLabel="Seguir editando"
+        variant="danger"
+        onConfirm={() => { setConfirmCancelOpen(false); onCancel(); }}
+        onCancel={() => setConfirmCancelOpen(false)}
+      />
     </motion.div>
   );
 }
+

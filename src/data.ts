@@ -82,7 +82,7 @@ export const INITIAL_LOGS: AccessLog[] = [
   {
     id: 'log-3',
     studentId: 'student-unknown',
-    studentName: 'Unknown Person',
+    studentName: 'Persona Desconocida',
     avatarInitials: '?',
     date: 'Oct 24, 2024',
     time: '14:10:48',
@@ -107,13 +107,13 @@ export const DAILY_STATS = {
   deniedToday: 12,
   alertsActive: 3,
   chartData: [
-    { day: 'Mon', count: 45 },
-    { day: 'Tue', count: 72 },
-    { day: 'Wed', count: 61 },
-    { day: 'Thu', count: 94 },
-    { day: 'Fri', count: 128 },
-    { day: 'Sat', count: 78 },
-    { day: 'Sun', count: 50 }
+    { day: 'Lun', count: 45 },
+    { day: 'Mar', count: 72 },
+    { day: 'Mie', count: 61 },
+    { day: 'Jue', count: 94 },
+    { day: 'Vie', count: 128 },
+    { day: 'Sab', count: 78 },
+    { day: 'Dom', count: 50 }
   ]
 };
 
@@ -124,7 +124,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'ScanFace',
     tag: 'VISION',
     description: 'Motor principal para análisis facial, extracción de puntos de referencia biométricos y comparación de alta precisión contra base de datos oficial.',
-    actionLabel: 'Biometric Matching',
+    actionLabel: 'Coincidencia Biométrica',
     status: 'operational'
   },
   {
@@ -133,7 +133,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'ShieldCheck',
     tag: 'ANTI-SPOOF',
     description: 'Detección avanzada de vivacidad y prevención de spoofing para verificar presencia física real ante la cámara en lugar de fotos o pantallas.',
-    actionLabel: 'Active Liveness',
+    actionLabel: 'Detección de Vivacidad',
     status: 'operational'
   },
   {
@@ -142,7 +142,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'Terminal',
     tag: 'COMPUTE',
     description: 'Ejecución de lógica serverless para flujos de trabajo basados en eventos, procesado rápido de firmas faciales sin aprovisionamiento de servidores.',
-    actionLabel: 'Execution Layer',
+    actionLabel: 'Capa de Ejecución',
     status: 'operational'
   },
   {
@@ -151,7 +151,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'Hub',
     tag: 'GATEWAY',
     description: 'Punto de conexión seguro para dispositivos periféricos (kioscos), encargado de control de tráfico, balanceo y autenticación segura con firma TLS 1.3.',
-    actionLabel: 'Interface Control',
+    actionLabel: 'Control de Interfaz',
     status: 'operational'
   },
   {
@@ -160,7 +160,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'Database',
     tag: 'STORAGE',
     description: 'Base de datos NoSQL ultra rápida de baja latencia para almacenar plantillas faciales, credenciales académicas, permisos de acceso y logs temporales.',
-    actionLabel: 'Metadata Persistence',
+    actionLabel: 'Persistencia de Metadatos',
     status: 'operational'
   },
   {
@@ -169,7 +169,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'FolderArchive',
     tag: 'OBJECT',
     description: 'Almacenamiento de objetos seguro y de alta disponibilidad para guardar capturas del feed original durante auditorías y fotos de perfil de registro.',
-    actionLabel: 'Secure Assets',
+    actionLabel: 'Activos Seguros',
     status: 'operational'
   },
   {
@@ -178,7 +178,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'Users',
     tag: 'IDENTITY',
     description: 'Gestión de identidad y directorios de personal administrativo para otorgar acceso basado en roles con soporte MFA y auditoría integrada.',
-    actionLabel: 'Auth Framework',
+    actionLabel: 'Marco de Autenticación',
     status: 'operational'
   },
   {
@@ -187,7 +187,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'BellRing',
     tag: 'ALERTS',
     description: 'Servicio de notificaciones del sistema para alertar a los supervisores por e-mail, SMS o push móvil en caso de intentos repetidos de acceso denegado.',
-    actionLabel: 'Real-time Comms',
+    actionLabel: 'Comunicaciones en Tiempo Real',
     status: 'operational'
   },
   {
@@ -196,7 +196,7 @@ export const CLOUD_SERVICES: CloudService[] = [
     iconName: 'LineChart',
     tag: 'METRICS',
     description: 'Monitoreo de latencia, tasa de aciertos y estado del hardware, recopilando métricas detalladas para el correcto funcionamiento del ecosistema.',
-    actionLabel: 'Health Monitoring',
+    actionLabel: 'Monitoreo de Salud',
     status: 'operational'
   }
 ];

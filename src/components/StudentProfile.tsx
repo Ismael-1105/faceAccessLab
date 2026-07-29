@@ -64,7 +64,7 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
                 />
                 <span className="absolute text-3xl font-bold text-zinc-400">{student.avatarInitials}</span>
               </div>
-              <h2 className="text-xl font-black text-white mt-4 tracking-tight">{student.name}</h2>
+              <h1 className="text-xl font-black text-white mt-4 tracking-tight">{student.name}</h1>
               <p className="text-sm text-white/70 mt-0.5">{student.career}</p>
             </div>
 
@@ -72,18 +72,18 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4">
-                  <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Laboratorio</span>
+                  <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Laboratorio</span>
                   <p className="text-sm font-bold text-zinc-900 dark:text-white mt-1">{student.lab}</p>
                 </div>
                 <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4">
-                  <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Coincidencia</span>
+                  <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Coincidencia</span>
                   <p className="text-sm font-bold text-zinc-900 dark:text-white mt-1">{student.matchPercentage}%</p>
                 </div>
               </div>
 
               <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 flex items-center justify-between">
                 <div>
-                  <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Estado de Acceso</span>
+                  <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Estado de Acceso</span>
                   <p className="text-sm font-bold text-zinc-900 dark:text-white mt-0.5">
                     {student.status === 'allowed' ? 'Habilitado' : 'Suspendido'}
                   </p>
@@ -100,28 +100,28 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
 
               {/* Mini-dashboard */}
               <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
-                <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">Dashboard de Accesos</span>
+                <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">Dashboard de Accesos</span>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 text-center">
                     <div className="w-8 h-8 rounded-lg bg-accent-50 dark:bg-accent-950/30 flex items-center justify-center mx-auto mb-1.5">
                       <SignIn className="w-4 h-4 text-accent-600 dark:text-accent-400" weight="regular" />
                     </div>
                     <p className="text-lg font-black text-zinc-900 dark:text-white font-mono">{totalAccesses}</p>
-                    <p className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Total</p>
+                    <p className="text-micro font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Total</p>
                   </div>
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 text-center">
                     <div className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-950/30 flex items-center justify-center mx-auto mb-1.5">
                       <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" weight="regular" />
                     </div>
                     <p className="text-lg font-black text-zinc-900 dark:text-white font-mono">{granted}</p>
-                    <p className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Permitidos</p>
+                    <p className="text-micro font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Permitidos</p>
                   </div>
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 text-center">
                     <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center mx-auto mb-1.5">
                       <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" weight="regular" />
                     </div>
                     <p className="text-lg font-black text-zinc-900 dark:text-white font-mono">{denied}</p>
-                    <p className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Denegados</p>
+                    <p className="text-micro font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Denegados</p>
                   </div>
                 </div>
               </div>
@@ -129,13 +129,13 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
               {/* Latest access */}
               {latestLog && (
                 <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
-                  <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">Ultimo Acceso</span>
+                  <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">Ultimo Acceso</span>
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 flex items-center justify-between">
                     <div>
                       <p className="text-xs font-semibold text-zinc-900 dark:text-white">{latestLog.date} — {latestLog.time}</p>
-                      <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 block">{latestLog.similarity}% similitud</span>
+                      <span className="text-label font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 block">{latestLog.similarity}% similitud</span>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                    <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
                       latestLog.result === 'Permitido'
                         ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
                         : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
@@ -148,7 +148,7 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
 
               {/* Access history */}
               <div className="border-t border-zinc-100 dark:border-zinc-800 pt-5">
-                <span className="text-[9px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">
+                <span className="text-micro font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase mb-3">
                   Historial de Accesos ({logs.length})
                 </span>
                 {logs.length > 0 ? (
@@ -157,11 +157,11 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
                       <div key={log.id} className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl text-xs">
                         <div>
                           <p className="font-semibold text-zinc-900 dark:text-white">{log.date}</p>
-                          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">{log.time}</span>
+                          <span className="text-label font-mono text-zinc-400 dark:text-zinc-500">{log.time}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-mono text-zinc-400 dark:text-zinc-500 text-[10px]">{log.similarity}%</span>
-                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold ${
+                          <span className="font-mono text-zinc-400 dark:text-zinc-500 text-label">{log.similarity}%</span>
+                          <span className={`px-2 py-0.5 rounded-lg text-micro font-bold ${
                             log.result === 'Permitido'
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
                               : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
@@ -185,3 +185,4 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
     </div>
   );
 }
+

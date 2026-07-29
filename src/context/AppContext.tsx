@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Student, AccessLog, AuthUser } from '../types.ts';
 import { INITIAL_STUDENTS, INITIAL_LOGS, DAILY_STATS } from '../data.ts';
+import ErrorBoundary from '../components/ErrorBoundary.tsx';
 
 export type Theme = 'light' | 'dark';
 
@@ -124,7 +125,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hasCameraPermission, setHasCameraPermission,
       showPermissionGate, setShowPermissionGate,
     }}>
-      {children}
+      <ErrorBoundary>
+        {children}
+      </ErrorBoundary>
     </AppContext.Provider>
   );
 }

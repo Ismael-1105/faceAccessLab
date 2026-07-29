@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FileCsv, FilePdf, ChartBar, TrendUp, Users, Clock, CalendarBlank, ArrowRight } from '@phosphor-icons/react';
 import type { AccessLog } from '../types.ts';
 import { DAILY_STATS } from '../data.ts';
@@ -35,6 +35,44 @@ export default function ReportsView({ logs }: ReportsViewProps) {
   const avgSimilarity = logs.length > 0
     ? (logs.reduce((sum, l) => sum + l.similarity, 0) / logs.length).toFixed(1)
     : '0';
+
+  const computedTopStudents = useMemo(() => {
+    const map = new Map<string, { accesses: number; similarities: number[] }>();
+    logs.forEach(l => {
+      if (!map.has(l.studentName)) {
+        map.set(l.studentName, { accesses: 0, similarities: [] });
+      }
+      const entry = map.get(l.studentName)!;
+      entry.accesses += 1;
+      entry.similarities.push(l.similarity);
+    });
+    return Array.from(map.entries())
+      .map(([name, data]) => ({
+        name,
+        accesses: data.accesses,
+        avg: parseFloat((data.similarities.reduce((a, b) => a + b, 0) / data.similarities.length).toFixed(1)),
+      }))
+      .sort((a, b) => b.accesses - a.accesses)
+      .slice(0, 5);
+  }, [logs]);
+
+  const computedPeakHours = useMemo(() => {
+    const hourBuckets: Record<string, number> = {};
+    logs.forEach(l => {
+      const hour = parseInt(l.time.split(':')[0], 10);
+      const rangeStart = `${String(hour).padStart(2, '0')}:00`;
+      const rangeEnd = `${String(hour).padStart(2, '0')}:59`;
+      const label = `${rangeStart} - ${rangeEnd}`;
+      hourBuckets[label] = (hourBuckets[label] || 0) + 1;
+    });
+    return Object.entries(hourBuckets)
+      .map(([hour, count]) => ({ hour, count }))
+      .sort((a, b) => a.hour.localeCompare(b.hour));
+  }, [logs]);
+
+  const topStudents = computedTopStudents.length > 0 ? computedTopStudents : TOP_STUDENTS;
+  const peakHours = computedPeakHours.length > 0 ? computedPeakHours : PEAK_HOURS;
+  const maxDay = DAILY_STATS.chartData.reduce((max, d) => d.count > max.count ? d : max, DAILY_STATS.chartData[0]);
 
   const handleExportCSV = () => {
     const header = 'Tipo,Valor\n';
@@ -100,7 +138,7 @@ export default function ReportsView({ logs }: ReportsViewProps) {
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
             <div>
-              <span className="text-[10px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
+              <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
               <p className="text-2xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{value}</p>
             </div>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
@@ -124,14 +162,14 @@ export default function ReportsView({ logs }: ReportsViewProps) {
               return (
                 <div key={i} className="flex flex-col items-center flex-1 group">
                   <div className="relative w-full flex justify-center">
-                    <div className="absolute -top-6 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded transition-transform whitespace-nowrap">
+                    <div className="absolute -top-6 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded transition-transform whitespace-nowrap">
                       {bar.count}
                     </div>
                     <div style={{ height: `${pct}%` }}
                       className="w-3/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 transition-all cursor-pointer"
                     />
                   </div>
-                  <span className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>
+                  <span className="text-micro font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>
                 </div>
               );
             })}
@@ -145,26 +183,26 @@ export default function ReportsView({ logs }: ReportsViewProps) {
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Concentración de accesos por hora.</p>
           </div>
           <div className="space-y-4">
-            {[
-              { label: 'Mañana (07:00–11:00)', data: PEAK_HOURS.slice(0, 4) },
-              { label: 'Mediodía (12:00–15:00)', data: PEAK_HOURS.slice(4, 8) },
+          {[
+              { label: 'Mañana (07:00–11:00)', data: peakHours.filter(h => parseInt(h.hour) < 12) },
+              { label: 'Mediodía (12:00–15:00)', data: peakHours.filter(h => parseInt(h.hour) >= 12) },
             ].map(group => {
               const max = Math.max(...group.data.map(h => h.count));
               return (
                 <div key={group.label}>
-                  <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2">{group.label}</p>
+                  <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2">{group.label}</p>
                   <div className="space-y-1.5">
                     {group.data.map(({ hour, count }) => {
                       const pct = (count / max) * 100;
                       return (
                         <div key={hour} className="flex items-center gap-3">
-                          <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 w-20 flex-shrink-0">{hour}</span>
+                          <span className="text-label font-mono text-zinc-500 dark:text-zinc-400 w-20 flex-shrink-0">{hour}</span>
                           <div className="flex-1 h-4 rounded-xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                             <div style={{ width: `${pct}%` }}
                               className="h-full rounded-xl bg-gradient-to-r from-accent-500 to-accent-600"
                             />
                           </div>
-                          <span className="text-[10px] font-mono font-bold text-zinc-500 dark:text-zinc-400 w-6 text-right">{count}</span>
+                          <span className="text-label font-mono font-bold text-zinc-500 dark:text-zinc-400 w-6 text-right">{count}</span>
                         </div>
                       );
                     })}
@@ -185,10 +223,10 @@ export default function ReportsView({ logs }: ReportsViewProps) {
           </div>
         </div>
         <div className="space-y-3">
-          {TOP_STUDENTS.map((s, i) => (
+          {topStudents.map((s, i) => (
             <div key={s.name} className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center gap-3">
-                <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-[10px] font-bold ${
+                <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-label font-bold ${
                   i === 0 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
                   i === 1 ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-300' :
                   i === 2 ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
@@ -197,8 +235,8 @@ export default function ReportsView({ logs }: ReportsViewProps) {
                 <span className="text-xs font-semibold text-zinc-900 dark:text-white">{s.name}</span>
               </div>
               <div className="flex items-center gap-4">
-                <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{s.accesses} accesos</span>
-                <span className="text-[10px] font-mono font-bold bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 px-2 py-0.5 rounded-xl">{s.avg}%</span>
+                <span className="text-label text-zinc-400 dark:text-zinc-500">{s.accesses} accesos</span>
+                <span className="text-label font-mono font-bold bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 px-2 py-0.5 rounded-xl">{s.avg}%</span>
               </div>
             </div>
           ))}
@@ -212,11 +250,11 @@ export default function ReportsView({ logs }: ReportsViewProps) {
           {[
             { label: 'Total Accesos', value: totalAccesses },
             { label: 'Promedio Diario', value: (totalAccesses / 7).toFixed(1) },
-            { label: 'Pico Semanal', value: `${Math.max(...DAILY_STATS.chartData.map(d => d.count))} (Vie)` },
+            { label: 'Pico Semanal', value: `${maxDay.count} (${maxDay.day})` },
             { label: 'Tasa de Autorización', value: totalAccesses > 0 ? `${((permitidos / totalAccesses) * 100).toFixed(1)}%` : '0%' },
           ].map(({ label, value }) => (
             <div key={label} className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
-              <p className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase">{label}</p>
+              <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">{label}</p>
               <p className="text-sm font-black text-zinc-900 dark:text-white mt-0.5">{value}</p>
             </div>
           ))}
@@ -225,3 +263,4 @@ export default function ReportsView({ logs }: ReportsViewProps) {
     </div>
   );
 }
+

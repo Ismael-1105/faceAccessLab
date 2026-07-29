@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, CheckCircle, XCircle, SignIn, Clock, CalendarBlank,
@@ -19,6 +19,20 @@ interface StudentDetailViewProps {
 
 const ITEMS_PER_PAGE = 8;
 
+function getPageWindow(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i);
+  }
+  const pages: (number | 'ellipsis')[] = [0];
+  if (current > 3) pages.push('ellipsis');
+  const windowStart = Math.max(1, current - 2);
+  const windowEnd = Math.min(total - 2, current + 2);
+  for (let i = windowStart; i <= windowEnd; i++) pages.push(i);
+  if (current < total - 4) pages.push('ellipsis');
+  pages.push(total - 1);
+  return pages;
+}
+
 function getMatchColor(pct: number) {
   if (pct >= 90) return { bar: 'bg-green-500', text: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-950/40' };
   if (pct >= 70) return { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-950/40' };
@@ -37,7 +51,7 @@ function StatusIndicator({ status }: { status: Student['status'] }) {
         <p className={`text-sm font-bold ${isActive ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
           {isActive ? 'Activo' : 'Suspendido'}
         </p>
-        <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-tight mt-0.5">
+        <p className="text-caption text-zinc-400 dark:text-zinc-500 leading-tight mt-0.5">
           {isActive ? 'Puede acceder al laboratorio' : 'Acceso bloqueado'}
         </p>
       </div>
@@ -50,7 +64,7 @@ function MatchBar({ percentage }: { percentage: number }) {
   return (
     <div>
       <div className="flex justify-between items-end mb-2">
-        <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Match Biométrico</span>
+        <span className="text-caption font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Match Biométrico</span>
         <span className={`text-xl font-black tracking-tight ${color.text}`}>{percentage}%</span>
       </div>
       <div className="w-full h-2.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -82,11 +96,11 @@ function StatCard({ icon: Icon, value, label, color, subtitle }: {
         <div className={`w-8 h-8 rounded-xl flex items-center justify-center bg-zinc-50 dark:bg-zinc-800 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-700/50 transition-colors`}>
           <Icon className={`w-4 h-4 ${color}`} weight="regular" />
         </div>
-        <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{label}</span>
+        <span className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{label}</span>
       </div>
       <p className={`text-2xl font-black tracking-tight ${color}`}>{value}</p>
       {subtitle && (
-        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">{subtitle}</p>
+        <p className="text-label text-zinc-400 dark:text-zinc-500 mt-1">{subtitle}</p>
       )}
     </div>
   );
@@ -102,24 +116,24 @@ function AccessLogRow({ log }: { log: AccessLog }) {
       role="row"
     >
       <div className="flex items-center gap-3.5 min-w-0">
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isPermitido ? 'bg-green-500' : 'bg-red-500'}`} />
+        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isPermitido ? 'bg-green-500' : 'bg-red-500'}`} aria-hidden="true" />
         <div className="flex items-center gap-2.5 text-zinc-400 dark:text-zinc-500 min-w-0">
           <CalendarBlank className="w-3.5 h-3.5 flex-shrink-0" weight="regular" />
           <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{log.date}</span>
           <span className="text-zinc-300 dark:text-zinc-600">·</span>
           <Clock className="w-3.5 h-3.5 flex-shrink-0" weight="regular" />
-          <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">{log.time}</span>
+          <span className="text-caption font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">{log.time}</span>
         </div>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         <span
-          className="text-[10px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md text-zinc-500 dark:text-zinc-400"
+          className="text-label font-mono font-bold bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md text-zinc-500 dark:text-zinc-400"
           aria-label={`Similitud: ${log.similarity}%`}
         >
           {log.similarity}%
         </span>
         <span
-          className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
+          className={`px-2.5 py-1 rounded-xl text-label font-bold ${
             isPermitido
               ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
               : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
@@ -161,6 +175,8 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
     return result;
   }, [studentLogs, search, statusFilter]);
 
+  useEffect(() => { setPage(0); }, [filteredLogs.length]);
+
   const totalPages = Math.ceil(filteredLogs.length / ITEMS_PER_PAGE);
   const paginatedLogs = filteredLogs.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
 
@@ -173,7 +189,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
       {/* ── Breadcrumb ── */}
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors focus-visible:outline-2 focus-visible:outline-accent-500 rounded-md px-1 py-0.5 -ml-1 cursor-pointer"
+        className="inline-flex items-center gap-1.5 text-caption font-semibold text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors focus-visible:outline-2 focus-visible:outline-accent-500 rounded-md px-1 py-0.5 -ml-1 cursor-pointer"
         aria-label="Volver al listado de alumnos"
       >
         <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
@@ -198,7 +214,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
 
             {/* Info principal */}
             <div className="flex-1 min-w-0">
-              <h1 className="text-[28px] md:text-[30px] font-black text-zinc-900 dark:text-white tracking-tight leading-tight">
+              <h1 className="text-stat md:text-3xl font-black text-zinc-900 dark:text-white tracking-tight leading-tight">
                 {student.name}
               </h1>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center gap-1.5">
@@ -208,16 +224,16 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
 
               {/* Chips — altura uniforme, mismo gap */}
               <div className="flex flex-wrap gap-2 mt-4">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-caption font-semibold text-zinc-600 dark:text-zinc-300">
                   <Flask className="w-3.5 h-3.5 text-accent-500" weight="regular" />
                   {student.lab}
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-[11px] font-mono font-semibold text-zinc-500 dark:text-zinc-400">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-caption font-mono font-semibold text-zinc-500 dark:text-zinc-400">
                   <IdentificationBadge className="w-3.5 h-3.5 text-accent-500" weight="regular" />
                   {student.id}
                 </span>
                 <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-bold ${
                     student.status === 'allowed'
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                       : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400'
@@ -304,7 +320,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
         <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Historial de accesos</h3>
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+            <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-0.5">
               {filteredLogs.length} registro{filteredLogs.length !== 1 ? 's' : ''} biométrico{filteredLogs.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -317,10 +333,10 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
           <div className="py-14 flex flex-col items-center text-center px-4">
             <WarningCircle className="w-8 h-8 text-zinc-300 dark:text-zinc-600 mb-3" weight="regular" />
             <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Sin resultados</p>
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">Ajusta los filtros para ver más registros.</p>
+            <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1">Ajusta los filtros para ver más registros.</p>
             <button
               onClick={() => { setSearch(''); setStatusFilter('all'); setPage(0); }}
-              className="mt-3 text-[11px] font-semibold text-accent-600 dark:text-accent-400 hover:underline"
+              className="mt-3 text-caption font-semibold text-accent-600 dark:text-accent-400 hover:underline"
             >
               Limpiar filtros
             </button>
@@ -335,8 +351,8 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
 
             {/* Paginación */}
             {totalPages > 1 && (
-              <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+              <nav aria-label="Paginación" className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                <span className="text-label font-mono text-zinc-400 dark:text-zinc-500">
                   Pág. {page + 1} de {totalPages}
                 </span>
                 <div className="flex items-center gap-2">
@@ -348,21 +364,27 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
                   >
                     <CaretLeft className="w-3.5 h-3.5" weight="bold" />
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setPage(i)}
-                      className={`w-7 h-7 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
-                        page === i
-                          ? 'bg-accent-600 text-white'
-                          : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                      }`}
-                      aria-label={`Ir a página ${i + 1}`}
-                      aria-current={page === i ? 'page' : undefined}
-                    >
-                      {i + 1}
-                    </button>
-                  ))}
+                  {getPageWindow(page, totalPages).map((p, idx) =>
+                    p === 'ellipsis' ? (
+                      <span key={`e-${idx}`} className="w-7 h-7 flex items-center justify-center text-label text-zinc-400 dark:text-zinc-500 select-none">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        className={`w-7 h-7 rounded-xl text-label font-bold transition-all cursor-pointer ${
+                          page === p
+                            ? 'bg-accent-600 text-white'
+                            : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        }`}
+                        aria-label={`Ir a página ${p + 1}`}
+                        aria-current={page === p ? 'page' : undefined}
+                      >
+                        {p + 1}
+                      </button>
+                    )
+                  )}
                   <button
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page === totalPages - 1}
@@ -372,7 +394,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
                     <CaretRight className="w-3.5 h-3.5" weight="bold" />
                   </button>
                 </div>
-              </div>
+              </nav>
             )}
           </>
         )}
@@ -393,3 +415,4 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
     </motion.div>
   );
 }
+

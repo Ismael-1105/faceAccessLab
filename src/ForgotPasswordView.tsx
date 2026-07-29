@@ -67,7 +67,7 @@ export default function ForgotPasswordView() {
                 </p>
               </div>
               <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 w-full text-center">
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
+                <p className="text-label text-zinc-400 dark:text-zinc-500 font-mono">
                   Modo demostración — el correo no se envió realmente.
                 </p>
               </div>
@@ -82,7 +82,7 @@ export default function ForgotPasswordView() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
                   Correo institucional
                 </label>
                 <div className="relative">
@@ -102,7 +102,7 @@ export default function ForgotPasswordView() {
                 <motion.p
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-[11px] text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg"
+                  className="text-caption text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg"
                 >
                   {error}
                 </motion.p>
@@ -130,3 +130,4 @@ export default function ForgotPasswordView() {
     </div>
   );
 }
+

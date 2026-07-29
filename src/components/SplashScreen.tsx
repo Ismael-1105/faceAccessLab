@@ -73,7 +73,7 @@ export default function SplashScreen() {
             key={msgIndex}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-[11px] text-zinc-400 dark:text-zinc-500 text-center font-mono"
+            className="text-caption text-zinc-400 dark:text-zinc-500 text-center font-mono"
           >
             {LOADING_MESSAGES[msgIndex]}
           </motion.p>
@@ -82,3 +82,4 @@ export default function SplashScreen() {
     </div>
   );
 }
+

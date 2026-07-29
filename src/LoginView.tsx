@@ -53,7 +53,7 @@ export default function LoginView() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Correo institucional</label>
+              <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Correo institucional</label>
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
                 placeholder="docente@universidad.edu"
@@ -62,7 +62,7 @@ export default function LoginView() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Contraseña</label>
+              <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Contraseña</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required
@@ -76,7 +76,7 @@ export default function LoginView() {
             </div>
 
             {error && (
-              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-[11px] text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-caption text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">
                 {error}
               </motion.p>
             )}
@@ -85,13 +85,13 @@ export default function LoginView() {
               Iniciar sesión
             </button>
 
-            <Link to="/recuperar" className="block w-full text-center text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-all">
+            <Link to="/recuperar" className="block w-full text-center text-caption font-semibold text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-all">
               ¿Olvidaste tu contraseña?
             </Link>
           </form>
 
           <div className="mt-6 pt-5 border-t border-zinc-100 dark:border-zinc-800">
-            <p className="text-[10px] text-zinc-400 dark:text-zinc-500 text-center font-medium">
+            <p className="text-label text-zinc-400 dark:text-zinc-500 text-center font-medium">
               Acceso exclusivo para personal docente autorizado.
             </p>
           </div>
@@ -100,3 +100,4 @@ export default function LoginView() {
     </div>
   );
 }
+

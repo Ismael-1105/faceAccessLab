@@ -56,7 +56,7 @@ export default function AlertsCenter({ alerts, onAcknowledge, onResolve }: Alert
         <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">
           Centro de Alertas
           {activeCount > 0 && (
-            <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 align-middle">
+            <span className="ml-2 text-label font-bold px-2 py-0.5 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 align-middle">
               {activeCount} activa{activeCount !== 1 ? 's' : ''}
             </span>
           )}
@@ -78,7 +78,7 @@ export default function AlertsCenter({ alerts, onAcknowledge, onResolve }: Alert
           >
             {label}
             {count > 0 && (
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-md text-[10px] ${activeFilter === key ? 'bg-zinc-100 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}`}>
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-md text-label ${activeFilter === key ? 'bg-zinc-100 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'}`}>
                 {count}
               </span>
             )}
@@ -116,7 +116,7 @@ export default function AlertsCenter({ alerts, onAcknowledge, onResolve }: Alert
                       <p className="text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed break-words">{alert.message}</p>
                       <div className="flex items-center gap-1.5 mt-1.5 text-zinc-400 dark:text-zinc-500">
                         <Clock className="w-3 h-3" weight="regular" />
-                        <span className="text-[10px]">{formatTimestamp(alert.timestamp)}</span>
+                        <span className="text-label">{formatTimestamp(alert.timestamp)}</span>
                       </div>
                     </div>
                   </div>
@@ -145,10 +145,11 @@ export default function AlertsCenter({ alerts, onAcknowledge, onResolve }: Alert
           <div className="py-14 text-center text-zinc-400 dark:text-zinc-500">
             <ShieldCheck className="w-10 h-10 mx-auto mb-3 text-zinc-300 dark:text-zinc-600" weight="regular" />
             <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">No hay alertas {activeFilter === 'active' ? 'activas' : activeFilter === 'acknowledged' ? 'reconocidas' : 'resueltas'}</p>
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">Todo en orden con el ecosistema biométrico.</p>
+            <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1">Todo en orden con el ecosistema biométrico.</p>
           </div>
         )}
       </div>
     </div>
   );
 }
+

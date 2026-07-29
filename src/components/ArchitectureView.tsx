@@ -83,9 +83,9 @@ export default function ArchitectureView() {
       <section className="py-14 md:py-20 px-5 md:px-8 border-b border-zinc-800/50 bg-gradient-to-b from-zinc-900 to-zinc-950 relative overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a20_1px,transparent_1px),linear-gradient(to_bottom,#27272a20_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
         <div className="max-w-4xl mx-auto text-center relative z-10">
-          <span className="inline-flex items-center gap-2 px-3 py-1 bg-zinc-800/80 border border-zinc-700/50 text-accent-400 text-[10px] font-mono tracking-wider uppercase rounded-xl mb-5">
+          <span className="inline-flex items-center gap-2 px-3 py-1 bg-zinc-800/80 border border-zinc-700/50 text-accent-400 text-label font-mono tracking-wider uppercase rounded-xl mb-5">
             <Cloud className="w-3 h-3" weight="fill" />
-            AWS Infrastructure & Edge Deployment
+            Infraestructura AWS y Despliegue Edge
           </span>
           <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4 leading-tight text-white">
             Topologia Serverless de Grado Industrial
@@ -148,7 +148,7 @@ export default function ArchitectureView() {
                     }`}>
                       <ServiceIcon className="w-4 h-4" weight={isSelected ? 'fill' : 'regular'} />
                     </div>
-                    <span className={`text-[8px] font-mono tracking-wider py-0.5 px-2 rounded-md uppercase font-bold ${
+                    <span className={`text-overline font-mono tracking-wider py-0.5 px-2 rounded-md uppercase font-bold ${
                       isSelected ? 'bg-zinc-100 text-zinc-600' : 'bg-zinc-800 text-accent-400'
                     }`}>
                       {srv.tag}
@@ -156,7 +156,7 @@ export default function ArchitectureView() {
                   </div>
                   <div>
                     <h4 className="font-bold text-xs leading-tight">{srv.name}</h4>
-                    <p className={`text-[9px] mt-1 line-clamp-2 ${isSelected ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                    <p className={`text-micro mt-1 line-clamp-2 ${isSelected ? 'text-zinc-500' : 'text-zinc-500'}`}>
                       {srv.description}
                     </p>
                   </div>
@@ -184,22 +184,22 @@ export default function ArchitectureView() {
                       <ActiveIcon className="w-5 h-5 text-accent-400" weight="regular" />
                     </div>
                     <div>
-                      <span className="text-[9px] font-mono tracking-wider text-accent-400 uppercase font-bold">{selectedService.tag}</span>
+                      <span className="text-micro font-mono tracking-wider text-accent-400 uppercase font-bold">{selectedService.tag}</span>
                       <h3 className="text-base font-bold text-white tracking-tight leading-none mt-1">{selectedService.name}</h3>
                     </div>
                   </div>
-                  <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] py-1 px-2.5 rounded-xl font-bold font-mono">
-                    Operational
+                  <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-label py-1 px-2.5 rounded-xl font-bold font-mono">
+                    Operativo
                   </span>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <span className="text-[9px] font-mono tracking-wider text-zinc-500 block font-bold uppercase">Descripcion</span>
+                    <span className="text-micro font-mono tracking-wider text-zinc-500 block font-bold uppercase">Descripcion</span>
                     <p className="text-xs text-zinc-400 leading-relaxed mt-1">{selectedService.description}</p>
                   </div>
                   <div>
-                    <span className="text-[9px] font-mono tracking-wider text-zinc-500 block font-bold uppercase">Rol en el Acceso</span>
+                    <span className="text-micro font-mono tracking-wider text-zinc-500 block font-bold uppercase">Rol en el Acceso</span>
                     <p className="text-xs text-zinc-500 leading-relaxed mt-1">
                       Ejecuta <span className="text-white font-semibold">"{selectedService.actionLabel}"</span> cuando un estudiante ingresa al rango de la lente IMX415 del kiosco.
                     </p>
@@ -207,14 +207,14 @@ export default function ArchitectureView() {
                 </div>
 
                 <div className="mt-8 border-t border-zinc-800/70 pt-6">
-                  <span className="text-[9px] font-mono tracking-wider text-zinc-400 block font-bold uppercase mb-3">Telemetria (CloudWatch)</span>
+                  <span className="text-micro font-mono tracking-wider text-zinc-400 block font-bold uppercase mb-3">Telemetria (CloudWatch)</span>
                   <div className="space-y-2.5">
                     {getTelemetryStats(selectedService.id).map((t, i) => (
                       <div key={i} className="flex justify-between items-center p-2.5 bg-black/40 border border-zinc-800/50 rounded-xl text-xs font-mono">
                         <span className="text-zinc-500">{t.name}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-white font-bold">{t.val}</span>
-                          <span className="text-emerald-400 font-bold text-[9px] uppercase tracking-wider bg-emerald-500/10 px-1.5 rounded-md">
+                          <span className="text-emerald-400 font-bold text-micro uppercase tracking-wider bg-emerald-500/10 px-1.5 rounded-md">
                             {t.status}
                           </span>
                         </div>
@@ -224,7 +224,7 @@ export default function ArchitectureView() {
                 </div>
               </div>
 
-              <div className="text-[10px] text-zinc-500 border-t border-zinc-800/50 pt-4 mt-6">
+              <div className="text-label text-zinc-500 border-t border-zinc-800/50 pt-4 mt-6">
                 * Las firmas biometricas se destruyen al termino del ciclo lambda para salvaguardar la privacidad GDPR.
               </div>
             </motion.div>
@@ -236,8 +236,8 @@ export default function ArchitectureView() {
       <section className="bg-black py-16 px-5 md:px-8 border-t border-zinc-800/50">
         <div className="max-w-7xl mx-auto space-y-10">
           <div>
-            <span className="text-accent-400 text-[9.5px] font-mono tracking-wider block uppercase font-bold mb-2">Hybrid Accessibility Engine</span>
-            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Resiliencia Desconectada (Offline)</h2>
+            <span className="text-accent-400 text-[9.5px] font-mono tracking-wider block uppercase font-bold mb-2">Motor de Accesibilidad Híbrido</span>
+            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Resiliencia Desconectada (Sin conexión)</h2>
             <p className="text-zinc-400 text-xs md:text-sm max-w-2xl leading-relaxed mt-2">
               Para garantizar que los laboratorios no queden bloqueados ante cortes de red, el kiosco posee un microprograma autonomo de contingencia local.
             </p>
@@ -263,3 +263,4 @@ export default function ArchitectureView() {
     </div>
   );
 }
+

@@ -36,9 +36,9 @@ export default function HomeView() {
         <div className="max-w-7xl mx-auto w-full px-6 md:px-10 py-16 md:py-20 relative z-10">
           <div className="max-w-3xl mx-auto text-center">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-50 dark:bg-accent-950/40 border border-accent-200 dark:border-accent-800/50 text-accent-700 dark:text-accent-300 text-[11px] font-semibold tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />
-                Enterprise Cloud Security
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-50 dark:bg-accent-950/40 border border-accent-200 dark:border-accent-800/50 text-accent-700 dark:text-accent-300 text-caption font-semibold tracking-wide">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" aria-hidden="true" />
+                Control Biométrico Inteligente
               </span>
             </motion.div>
 
@@ -116,8 +116,8 @@ export default function HomeView() {
                 </span>
                 <div>
                   <h4 className="text-sm font-bold text-zinc-900 dark:text-white">{step.title}</h4>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono uppercase">{step.subtitle}</p>
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 leading-relaxed">{step.desc}</p>
+                  <p className="text-caption text-zinc-500 dark:text-zinc-400 font-mono uppercase">{step.subtitle}</p>
+                  <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1 leading-relaxed">{step.desc}</p>
                 </div>
               </div>
             ))}
@@ -125,17 +125,18 @@ export default function HomeView() {
         </div>
       </section>
 
-      {/* Footer CTA subtle */}
+      {/* Footer — demo context */}
       <section className="py-12 px-6 md:px-10 bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800">
         <div className="max-w-5xl mx-auto text-center">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            ¿Interesado en implementar FaceAccess en tu universidad?{' '}
-            <a href="mailto:contacto@faceaccess.lab" className="text-accent-600 dark:text-accent-400 font-semibold hover:underline">
-              Contacta con nuestro equipo →
-            </a>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">
+            Proyecto académico · Demostración funcional de control de acceso biométrico
+          </p>
+          <p className="text-caption text-zinc-300 dark:text-zinc-600 mt-1">
+            FaceAccess Lab · Universidad Internacional del Ecuador (UIDE)
           </p>
         </div>
       </section>
     </main>
   );
 }
+

@@ -20,7 +20,7 @@ export default function Header({ onLoginClick, onStudentKioskClick }: HeaderProp
         <span className="text-lg font-bold text-zinc-900 dark:text-white tracking-tight">
           FaceAccess
         </span>
-        <span className="hidden sm:inline text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase mt-0.5">
+        <span className="hidden sm:inline text-label font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase mt-0.5">
           Lab
         </span>
       </div>
@@ -32,6 +32,7 @@ export default function Header({ onLoginClick, onStudentKioskClick }: HeaderProp
           onClick={toggleTheme}
           className="p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all"
           title={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
+          aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
         >
           {theme === 'light' ? <Moon className="w-[18px] h-[18px]" weight="regular" /> : <Sun className="w-[18px] h-[18px]" weight="regular" />}
         </button>
@@ -59,3 +60,4 @@ export default function Header({ onLoginClick, onStudentKioskClick }: HeaderProp
     </header>
   );
 }
+

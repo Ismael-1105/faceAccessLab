@@ -8,14 +8,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, ShieldCheck, Cpu, SlidersHorizontal, SignOut,
-  ChartBar, List
+  ChartBar, GearSix
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import EnrollmentView from './EnrollmentView.tsx';
 import StudentDetailView from './StudentDetailView.tsx';
 import AlertsCenter from './AlertsCenter.tsx';
 import ReportsView from './ReportsView.tsx';
-import ConfirmDialog from './ConfirmDialog.tsx';
 import EmptyState from './EmptyState.tsx';
 import { MOCK_ALERTS } from '../data.ts';
 import type { Alert } from '../types.ts';
@@ -33,9 +32,10 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   const [showEnrollment, setShowEnrollment] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>(MOCK_ALERTS);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearState, setClearState] = useState<'idle' | 'confirming' | 'done'>('idle');
+  const [typedConfirm, setTypedConfirm] = useState('');
 
   const handleAcknowledgeAlert = (id: string) => {
     setAlerts(prev => prev.map(a => a.id === id && a.status === 'active' ? { ...a, status: 'acknowledged' as const } : a));
@@ -69,118 +69,87 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  const SIDEBAR_ITEMS = [
-    { tab: 'overview' as const, icon: Heartbeat, label: 'Vista General' },
-    { tab: 'students' as const, icon: Users, label: `Alumnos (${students.length})` },
-    { tab: 'logs' as const, icon: SlidersHorizontal, label: `Historial (${logs.length})` },
-    { tab: 'alerts' as const, icon: ShieldWarning, label: `Alertas (${alerts.filter(a => a.status === 'active').length})` },
-    { tab: 'reports' as const, icon: ChartBar, label: 'Reportes' },
-    { tab: 'config' as const, icon: Cpu, label: 'Calibracion' },
+  const longestName = students.reduce((max, s) => Math.max(max, s.name.length), 0);
+
+  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config';
+  const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
+    { tab: 'overview', icon: Heartbeat, label: 'Vista General' },
+    { tab: 'students', icon: Users, label: `Alumnos (${students.length})` },
+    { tab: 'logs', icon: SlidersHorizontal, label: `Historial (${logs.length})` },
+    { tab: 'alerts', icon: ShieldWarning, label: `Alertas (${alerts.filter(a => a.status === 'active').length})` },
   ];
 
   return (
     <div className="pt-16 min-h-screen bg-surface dark:bg-zinc-950 flex flex-col md:flex-row">
 
-      {/* Sidebar */}
-      <aside className={`bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:min-h-[calc(100vh-64px)] transition-all duration-200 ${
-        sidebarCollapsed ? 'w-16 px-2' : 'w-full md:w-60 px-5'
-      } py-5`}>
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="w-full py-2 px-2 text-xs rounded-lg font-semibold transition-all flex items-center justify-center gap-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 mb-4 cursor-pointer"
-          aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-        >
-          <List className="w-4 h-4" weight="regular" />
-          {!sidebarCollapsed && <span className="text-[10px] uppercase tracking-wider">Colapsar</span>}
-        </button>
-
-        <div className={`space-y-6 flex-1 ${sidebarCollapsed ? 'hidden' : ''}`}>
-          <div>
-            <p className="text-[10px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">Administrador</p>
-            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">Consola de Control</h3>
-          </div>
-          <nav className="flex flex-col gap-1.5">
-            {SIDEBAR_ITEMS.map(({ tab, icon: Icon, label }) => (
-              <button
-                key={tab}
-                onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
-                className={`w-full py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === tab
-                    ? 'bg-accent-600 text-white shadow-sm'
-                    : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200'
-                }`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" weight={activeTab === tab ? 'fill' : 'regular'} />
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-            <p className="text-[9px] font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2 font-bold px-1">Herramientas</p>
-            <div className="flex flex-col gap-1">
-              <Link to="/docente/demo" className="w-full py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200">
-                <Cpu className="w-4 h-4 flex-shrink-0" weight="regular" />
-                Simulador de Escaneo
-              </Link>
-              <Link to="/docente/arquitectura" className="w-full py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200">
-                <ChartBar className="w-4 h-4 flex-shrink-0" weight="regular" />
-                Arquitectura Cloud
-              </Link>
-            </div>
-          </div>
+      {/* Sidebar — always expanded, 4 primary tabs */}
+      <aside className="w-full md:w-60 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:min-h-[calc(100vh-64px)] px-5 py-5">
+        <div className="mb-4">
+          <p className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">Administrador</p>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">Consola de Control</h3>
         </div>
 
-        {/* Collapsed icon-only nav */}
-        {sidebarCollapsed && (
-          <nav className="flex flex-col gap-1">
-            {SIDEBAR_ITEMS.map(({ tab, icon: Icon }) => (
-              <button
-                key={tab}
-                onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
-                title={tab === 'overview' ? 'Vista General' : tab === 'students' ? `Alumnos (${students.length})` : tab === 'logs' ? `Historial (${logs.length})` : tab === 'alerts' ? 'Alertas' : tab === 'reports' ? 'Reportes' : 'Calibración'}
-                className={`w-10 h-10 mx-auto rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-                  activeTab === tab
-                    ? 'bg-accent-600 text-white shadow-sm'
-                    : 'text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300'
-                }`}
-              >
-                <Icon className="w-5 h-5" weight={activeTab === tab ? 'fill' : 'regular'} />
-              </button>
-            ))}
-            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex flex-col gap-1">
-              <Link to="/docente/demo" title="Simulador de Escaneo" className="w-10 h-10 mx-auto rounded-lg flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer">
-                <Cpu className="w-5 h-5" weight="regular" />
-              </Link>
-              <Link to="/docente/arquitectura" title="Arquitectura Cloud" className="w-10 h-10 mx-auto rounded-lg flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer">
-                <ChartBar className="w-5 h-5" weight="regular" />
-              </Link>
-            </div>
-          </nav>
-        )}
+        <nav className="flex flex-col gap-1 flex-1">
+          {PRIMARY_ITEMS.map(({ tab, icon: Icon, label }) => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
+              className={`w-full py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
+                activeTab === tab
+                  ? 'bg-accent-600 text-white shadow-sm'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" weight={activeTab === tab ? 'fill' : 'regular'} />
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        <div className={`${sidebarCollapsed ? 'space-y-1.5 mt-auto' : 'pt-5 border-t border-zinc-100 dark:border-zinc-800 mt-5 space-y-3'}`}>
-          {!sidebarCollapsed && (
-            <div className="flex items-center gap-2 px-1" title="Kiosk-042 — Conectado">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">Kiosk-042 online</span>
-            </div>
-          )}
+        {/* Divider + secondary items */}
+        <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-1">
           <button
-            onClick={() => navigate('/')}
-            className={`rounded-lg font-semibold transition-all flex items-center gap-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer ${
-              sidebarCollapsed ? 'w-10 h-10 mx-auto justify-center py-2 px-2' : 'w-full py-2.5 px-3 text-xs text-left'
+            onClick={() => setActiveTab('config')}
+            className={`w-full py-2 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
+              activeTab === 'config'
+                ? 'bg-accent-600 text-white shadow-sm'
+                : 'text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300'
             }`}
-            title="Cerrar sesión"
           >
-            <SignOut className="w-4 h-4 flex-shrink-0" weight="regular" />
-            {!sidebarCollapsed && 'Cerrar sesión'}
+            <GearSix className="w-4 h-4 flex-shrink-0" weight={activeTab === 'config' ? 'fill' : 'regular'} />
+            Calibración
           </button>
         </div>
+
+        {/* Status + quick links */}
+        <div className="pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+          <div className="flex items-center gap-2 px-1" title="Kiosk-042 — Conectado">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" aria-hidden="true" />
+            <span className="text-label text-zinc-400 dark:text-zinc-500 font-medium">Kiosk-042 en línea</span>
+          </div>
+          <div className="flex gap-2 px-1">
+            <Link to="/docente/demo" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
+              Demo
+            </Link>
+            <span className="text-zinc-300 dark:text-zinc-600">·</span>
+            <Link to="/docente/arquitectura" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
+              Arquitectura
+            </Link>
+          </div>
+        </div>
+
+        <button
+          onClick={() => navigate('/')}
+          className="w-full mt-4 py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+        >
+          <SignOut className="w-4 h-4 flex-shrink-0" weight="regular" />
+          Cerrar sesión
+        </button>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 p-5 md:p-8 overflow-x-hidden">
+        <h1 className="sr-only">Panel de Administración</h1>
 
         {/* ========== OVERVIEW ========== */}
         {activeTab === 'overview' && (
@@ -194,7 +163,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               ].map(({ label, value, icon: Icon, accent, alert }, i) => (
                 <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
                   <div>
-                    <span className="text-[10px] font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
+                    <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
                     <p className={`${i === 0 ? 'text-3xl' : 'text-2xl'} font-black tracking-tight mt-1 ${alert && value > 0 ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-white'}`}>
                       {value}
                     </p>
@@ -225,7 +194,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   ].map((bar, i) => (
                     <div key={i} className="flex flex-col items-center flex-1 group">
                       <div className="relative w-full flex justify-center">
-                        <div className="absolute -top-7 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-lg transition-transform">
+                        <div className="absolute -top-7 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded-lg transition-transform">
                           {bar.count}
                         </div>
                         <div
@@ -233,7 +202,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                           className="w-4/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 transition-all cursor-pointer"
                         />
                       </div>
-                      <span className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>
+                      <span className="text-label font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>
                     </div>
                   ))}
                 </div>
@@ -255,10 +224,10 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   </svg>
                   <div className="absolute text-center">
                     <p className="text-2xl font-black text-zinc-900 dark:text-white font-mono">91.5%</p>
-                    <p className="text-[9px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Aceptado</p>
+                    <p className="text-micro font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Aceptado</p>
                   </div>
                 </div>
-                <div className="flex justify-between items-center text-[10px] border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                <div className="flex justify-between items-center text-label border-t border-zinc-100 dark:border-zinc-800 pt-3">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
                     <span className="text-zinc-500 dark:text-zinc-400">91.5% Permitidos</span>
@@ -286,17 +255,17 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 {logs.slice(0, 3).map((log) => (
                   <div key={log.id} className="flex justify-between items-center p-3 border border-zinc-100 dark:border-zinc-800 rounded-xl text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-accent-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-lg bg-accent-600 text-white text-label font-bold flex items-center justify-center">
                         {log.avatarInitials}
                       </div>
                       <div>
-                        <p className="font-semibold text-zinc-900 dark:text-white">{log.studentName}</p>
-                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500">{log.time} &middot; {log.date}</p>
+                        <p className="font-semibold text-zinc-900 dark:text-white truncate max-w-[180px]" title={log.studentName}>{log.studentName}</p>
+                        <p className="text-label text-zinc-400 dark:text-zinc-500">{log.time} &middot; {log.date}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className="font-mono text-zinc-400 dark:text-zinc-500 text-[10px]">{log.similarity}%</span>
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                      <span className="font-mono text-zinc-400 dark:text-zinc-500 text-label">{log.similarity}%</span>
+                      <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
                         log.result === 'Permitido' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
                       }`}>{log.result}</span>
                     </div>
@@ -365,7 +334,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-xs">
                   <thead>
-                    <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-[10px] font-bold text-left">
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
                       <th className="p-4">Estudiante</th>
                       <th className="p-4">Especialidad</th>
                       <th className="p-4">Lab</th>
@@ -375,7 +344,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   </thead>
                   <tbody>
                     {filteredStudents.map((student) => (
-                      <tr key={student.id} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors cursor-pointer" onClick={() => setSelectedStudentId(student.id)}>
+                      <tr key={student.id} tabIndex={0} role="button" className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors cursor-pointer" onClick={() => setSelectedStudentId(student.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedStudentId(student.id); } }} aria-label={`Ver detalle de ${student.name}`}>
                         <td className="p-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex-shrink-0 flex items-center justify-center relative">
@@ -383,16 +352,16 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                               <span className="absolute text-xs font-bold text-zinc-400">{student.avatarInitials}</span>
                             </div>
                             <div>
-                              <p className="font-bold text-zinc-900 dark:text-white text-sm">{student.name}</p>
-                              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">{student.id}</span>
+                              <p className="font-bold text-zinc-900 dark:text-white text-sm truncate max-w-[200px]" title={student.name}>{student.name}</p>
+                              <span className="text-label text-zinc-400 dark:text-zinc-500 font-mono">{student.id}</span>
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 text-zinc-600 dark:text-zinc-300">{student.career}</td>
+                        <td className="p-4 text-zinc-600 dark:text-zinc-300 truncate max-w-[180px]" title={student.career}>{student.career}</td>
                         <td className="p-4 font-semibold text-zinc-600 dark:text-zinc-300">{student.lab}</td>
                         <td className="p-4 text-center font-mono text-zinc-400 dark:text-zinc-500 font-bold">{student.matchPercentage}%</td>
                         <td className="p-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                          <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
                             student.status === 'allowed' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
                           }`}>
                             {student.status === 'allowed' ? 'Habilitado' : 'Suspendido'}
@@ -418,6 +387,11 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Concordancias, marcas temporales e incidencias.</p>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => setActiveTab('reports')}
+                  className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
+                  <ChartBar className="w-4 h-4" weight="regular" />
+                  Reportes
+                </button>
                 <button onClick={handleExportCSV}
                   className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
                   <FileCsv className="w-4 h-4" weight="regular" />
@@ -451,7 +425,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 {filteredLogs.length > 0 ? (
                   <table className="w-full border-collapse text-xs">
                     <thead>
-                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-[10px] font-bold text-left">
+                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
                         <th className="p-4">ID</th>
                         <th className="p-4">Alumno</th>
                         <th className="p-4">Fecha</th>
@@ -466,19 +440,19 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                           <td className="p-4 font-mono text-zinc-400 dark:text-zinc-500 font-semibold">{log.id}</td>
                           <td className="p-4">
                             <div className="flex items-center gap-2.5">
-                              <span className="w-7 h-7 rounded-lg bg-accent-600 text-white text-[9px] font-bold flex items-center justify-center">{log.avatarInitials}</span>
-                              <span className="font-semibold text-zinc-900 dark:text-white">{log.studentName}</span>
+                              <span className="w-7 h-7 rounded-lg bg-accent-600 text-white text-micro font-bold flex items-center justify-center">{log.avatarInitials}</span>
+                              <span className="font-semibold text-zinc-900 dark:text-white truncate max-w-[200px]" title={log.studentName}>{log.studentName}</span>
                             </div>
                           </td>
                           <td className="p-4 text-zinc-500 dark:text-zinc-400">{log.date}</td>
                           <td className="p-4 font-mono text-zinc-600 dark:text-zinc-300">{log.time}</td>
                           <td className="p-4 text-center">
-                            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-lg text-[10px] font-bold text-zinc-500 dark:text-zinc-400">
+                            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-lg text-label font-bold text-zinc-500 dark:text-zinc-400">
                               {log.similarity}%
                             </span>
                           </td>
                           <td className="p-4 text-center">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                            <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
                               log.result === 'Permitido' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
                             }`}>
                               {log.result === 'Permitido' ? 'Desbloqueada' : 'Bloqueada'}
@@ -514,7 +488,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
         {activeTab === 'config' && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Calibracion y Umbrales</h3>
+              <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Calibración y Umbrales</h3>
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Ajuste de sensibilidad, tolerancia y sincronizacion.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -527,18 +501,18 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 ].map(({ label, value, min, max, default: def, desc }) => (
                   <div key={label}>
                     <div className="flex justify-between items-center mb-1.5">
-                      <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">{label}</label>
-                      <span className="text-[11px] font-mono font-bold bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 px-2 py-0.5 rounded-lg">{value}</span>
+                      <label className="text-caption font-semibold text-zinc-700 dark:text-zinc-300">{label}</label>
+                      <span className="text-caption font-mono font-bold bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 px-2 py-0.5 rounded-lg">{value}</span>
                     </div>
                     <input type="range" min={min} max={max} defaultValue={def}
                       className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer accent-accent-600" />
-                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 block">{desc}</span>
+                    <span className="text-label text-zinc-400 dark:text-zinc-500 mt-1 block">{desc}</span>
                   </div>
                 ))}
               </div>
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm space-y-4">
                 <h4 className="font-bold text-sm text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-2">Incidencias de Hardware</h4>
-                <div className="space-y-3 font-mono text-[10px]">
+                <div className="space-y-3 font-mono text-label">
                   <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-xl text-red-800 dark:text-red-400 flex justify-between items-center">
                     <span>ALERTA_TERMICA_KIOSK_42 // 41&deg;C</span>
                     <span className="font-bold">ACTIVA</span>
@@ -557,29 +531,72 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
 
             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm space-y-4">
               <h4 className="font-bold text-sm text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-2">Gestión de Datos</h4>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Eliminar todos los registros de acceso del sistema.</p>
-              <button
-                onClick={() => setConfirmOpen(true)}
-                className="px-4 py-2 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
-              >
-                <Trash className="w-4 h-4" weight="regular" />
-                Limpiar historial de accesos
-              </button>
+
+              {clearState === 'idle' && (
+                <>
+                  <p className="text-caption text-zinc-500 dark:text-zinc-400">Eliminar todos los registros de acceso del sistema. Esta acción es irreversible.</p>
+                  <button
+                    onClick={() => setClearState('confirming')}
+                    className="px-4 py-2 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer"
+                  >
+                    <Trash className="w-4 h-4" weight="regular" />
+                    Limpiar historial de accesos
+                  </button>
+                </>
+              )}
+
+              {clearState === 'confirming' && (
+                <div className="space-y-3">
+                  <p className="text-caption text-red-600 dark:text-red-400 font-semibold">
+                    Esta acción es irreversible. Escribe <span className="font-mono font-bold">LIMPIAR</span> para confirmar.
+                  </p>
+                  <input
+                    type="text"
+                    value={typedConfirm}
+                    onChange={e => setTypedConfirm(e.target.value)}
+                    placeholder="Escribe LIMPIAR"
+                    className="w-full p-2.5 rounded-lg border border-red-300 dark:border-red-700 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-xs transition-all"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setClearState('idle'); setTypedConfirm(''); }}
+                      className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => { handleClearLogs(); setClearState('done'); setTypedConfirm(''); }}
+                      disabled={typedConfirm !== 'LIMPIAR'}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Confirmar y limpiar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {clearState === 'done' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="w-4 h-4" weight="fill" />
+                    <p className="text-caption font-semibold">Historial de accesos limpiado correctamente.</p>
+                  </div>
+                  <button
+                    onClick={() => setClearState('idle')}
+                    className="text-caption text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
 
       </main>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Limpiar historial"
-        message="¿Estás seguro? Esta acción eliminará todos los registros permanentemente y no se puede deshacer."
-        confirmLabel="Limpiar todo"
-        variant="danger"
-        onConfirm={() => { handleClearLogs(); setConfirmOpen(false); }}
-        onCancel={() => setConfirmOpen(false)}
-      />
+
     </div>
   );
 }
+

@@ -49,15 +49,29 @@ const stateContent: Record<CameraPermissionState, {
 export default function CameraPermissionGate({ onProceed, onCancel }: CameraPermissionGateProps) {
   const { permissionState, requestPermission } = useCameraPermission();
   const [isRequesting, setIsRequesting] = React.useState(false);
+  const hasAutoRequested = React.useRef(false);
 
   const handleRequest = async () => {
+    if (isRequesting) return;
     setIsRequesting(true);
-    const granted = await requestPermission();
-    if (granted) {
-      setTimeout(onProceed, 600);
+    try {
+      const granted = await requestPermission();
+      if (granted) {
+        setTimeout(onProceed, 600);
+      }
+    } catch {
+      // Error handled: state stays at permissionState value
+    } finally {
+      setIsRequesting(false);
     }
-    setIsRequesting(false);
   };
+
+  React.useEffect(() => {
+    if (permissionState === 'prompt' && !hasAutoRequested.current) {
+      hasAutoRequested.current = true;
+      handleRequest();
+    }
+  }, [permissionState]);
 
   const content = stateContent[permissionState];
 
@@ -113,7 +127,7 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
 
               {permissionState === 'denied' && (
                 <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-3.5 text-left">
-                  <p className="text-[11px] text-red-700 dark:text-red-400 font-medium leading-relaxed">
+                  <p className="text-caption text-red-700 dark:text-red-400 font-medium leading-relaxed">
                     Para habilitar la cámara: abre la configuración de tu navegador, busca "Cámara" y permite el acceso para este sitio. Luego recarga la página.
                   </p>
                 </div>
@@ -144,8 +158,8 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
           </div>
 
           <div className="bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-200 dark:border-zinc-700 px-5 py-3 flex items-center justify-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-500" />
-            <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 tracking-wider uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-500" aria-hidden="true" />
+            <span className="text-label font-mono text-zinc-400 dark:text-zinc-500 tracking-wider uppercase">
               FaceAccess Lab · Terminal Kiosk
             </span>
           </div>
@@ -154,3 +168,4 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
     </AnimatePresence>
   );
 }
+
