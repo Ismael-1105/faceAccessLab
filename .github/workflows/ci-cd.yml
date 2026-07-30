@@ -48,6 +48,13 @@ jobs:
 
       - name: Verify build output
         run: |
-          test -f dist/index.html || { echo "ERROR: dist/index.html not found"; exit 1; }
-          echo "Build verified:"
-          ls -la dist/
+          if [ -d .next/standalone ]; then
+            echo "Build verified (standalone output):"
+            ls .next/
+          elif [ -d .next ]; then
+            echo "Build verified:"
+            ls .next/
+          else
+            echo "ERROR: .next directory not found"
+            exit 1
+          fi
