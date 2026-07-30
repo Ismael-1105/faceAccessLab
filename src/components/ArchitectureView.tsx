@@ -7,12 +7,13 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Cloud, Cpu, Database, Key, Bell, ShieldCheck,
-  ArrowRight, Lightning, Info, FileArchive, ChartLine
+  ArrowRight, Lightning, Info, FileArchive, ChartLine,
+  type IconWeight,
 } from '@phosphor-icons/react';
 import { CLOUD_SERVICES } from '../data.ts';
 import { CloudService } from '../types.ts';
 
-const iconMapping: Record<string, React.ComponentType<{ className?: string; weight?: string }>> = {
+const iconMapping: Record<string, React.ComponentType<{ className?: string; weight?: IconWeight }>> = {
   ScanFace: Cpu,
   ShieldCheck: ShieldCheck,
   Terminal: Cpu,

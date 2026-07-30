@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, ShieldCheck, Cpu, SlidersHorizontal, SignOut,
@@ -24,7 +25,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     students, logs, stats,
     handleToggleStudent, handleAddStudent, handleClearLogs,
   } = useApp();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,18 +129,18 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <span className="text-label text-zinc-400 dark:text-zinc-500 font-medium">Kiosk-042 en línea</span>
           </div>
           <div className="flex gap-2 px-1">
-            <Link to="/docente/demo" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
+            <Link href="/docente/demo" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
               Demo
             </Link>
             <span className="text-zinc-300 dark:text-zinc-600">·</span>
-            <Link to="/docente/arquitectura" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
+            <Link href="/docente/arquitectura" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
               Arquitectura
             </Link>
           </div>
         </div>
 
         <button
-          onClick={() => navigate('/')}
+          onClick={() => router.push('/')}
           className="w-full mt-4 py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
         >
           <SignOut className="w-4 h-4 flex-shrink-0" weight="regular" />

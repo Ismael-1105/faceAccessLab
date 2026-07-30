@@ -7,6 +7,20 @@ import {
 import type { Student } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
+async function registerFaceInRekognition(studentId: string, imageBase64: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/rekognition/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId, imageBase64 }),
+    });
+    const data = await res.json();
+    return data.ok === true;
+  } catch {
+    return false;
+  }
+}
+
 interface EnrollmentViewProps {
   onComplete: (student: Student) => void;
   onCancel: () => void;
@@ -92,10 +106,13 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     setIsCapturing(false);
   };
 
-  const handleSubmit = () => {
+  const [registering, setRegistering] = useState(false);
+
+  const handleSubmit = async () => {
     const initials = name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'N';
+    const studentId = 'student-' + Math.random().toString(36).substr(2, 9);
     const student: Student = {
-      id: 'student-' + Math.random().toString(36).substr(2, 9),
+      id: studentId,
       name,
       career,
       lab,
@@ -104,6 +121,14 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
       status: 'allowed',
       avatarInitials: initials,
     };
+
+    if (capturedImage && capturedImage !== DEFAULT_AVATAR) {
+      setRegistering(true);
+      const registered = await registerFaceInRekognition(studentId, capturedImage);
+      setRegistering(false);
+      console.log(registered ? '[Rekognition] Face registered' : '[Rekognition] Registration skipped');
+    }
+
     onComplete(student);
   };
 
@@ -361,10 +386,15 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
         ) : (
           <button
             onClick={handleSubmit}
-            className="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-xl text-xs transition-all active:scale-[0.98] cursor-pointer"
+            disabled={registering}
+            className="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:bg-zinc-400 text-white font-semibold px-5 py-2 rounded-xl text-xs transition-all active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed"
           >
-            <CheckCircle className="w-4 h-4" weight="fill" />
-            Cargar Biometría
+            {registering ? 'Registrando...' : (
+              <>
+                Confirmar y Matricular
+                <CheckCircle className="w-3.5 h-3.5" weight="bold" />
+              </>
+            )}
           </button>
         )}
       </div>

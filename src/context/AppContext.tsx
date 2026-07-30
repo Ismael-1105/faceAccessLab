@@ -1,6 +1,9 @@
+'use client';
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Student, AccessLog, AuthUser } from '../types.ts';
-import { INITIAL_STUDENTS, INITIAL_LOGS, DAILY_STATS } from '../data.ts';
+import { INITIAL_STUDENTS, DAILY_STATS } from '../data.ts';
+import { api, getToken, setToken } from '../lib/api.ts';
 import ErrorBoundary from '../components/ErrorBoundary.tsx';
 
 export type Theme = 'light' | 'dark';
@@ -27,6 +30,7 @@ interface AppContextType {
   setHasCameraPermission: React.Dispatch<React.SetStateAction<boolean>>;
   showPermissionGate: boolean;
   setShowPermissionGate: React.Dispatch<React.SetStateAction<boolean>>;
+  apiConnected: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -64,9 +68,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
-  const [logs, setLogs] = useState<AccessLog[]>(INITIAL_LOGS);
+  const [logs, setLogs] = useState<AccessLog[]>([]);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [showPermissionGate, setShowPermissionGate] = useState(false);
+  const [apiConnected, setApiConnected] = useState(false);
 
   const [stats, setStats] = useState({
     registered: DAILY_STATS.registered,
@@ -75,27 +80,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
     alertsActive: DAILY_STATS.alertsActive
   });
 
-  const handleLogin = (authUser: AuthUser) => setUser(authUser);
-  const handleLogout = () => setUser(null);
+  useEffect(() => {
+    const token = getToken();
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUser({
+          id: payload.userId,
+          email: payload.email,
+          password: '',
+          name: '',
+          role: payload.role,
+          studentId: payload.studentId,
+        });
+      } catch {
+        setToken(null);
+      }
+    }
+  }, []);
 
-  const handleToggleStudent = (id: string) => {
-    setStudents(prev =>
-      prev.map(student => {
-        if (student.id === id) {
-          return { ...student, status: student.status === 'allowed' ? 'denied' : 'allowed' as const };
+  useEffect(() => {
+    if (user && user.role === 'docente') {
+      Promise.all([
+        api.getStudents().catch(() => null),
+        api.getLogs().catch(() => null),
+        api.getStats().catch(() => null),
+        api.getAlerts().catch(() => null),
+      ]).then(([studentsData, logsData, statsData]) => {
+        if (studentsData) {
+          setStudents(studentsData);
+          setApiConnected(true);
         }
-        return student;
-      })
-    );
+        if (logsData) setLogs(logsData);
+        if (statsData) setStats(statsData);
+      });
+    }
+  }, [user]);
+
+  const handleLogin = (authUser: AuthUser) => setUser(authUser);
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
   };
 
-  const handleAddStudent = (newStudent: Student) => {
+  const handleToggleStudent = async (id: string) => {
+    setStudents(prev =>
+      prev.map(student =>
+        student.id === id
+          ? { ...student, status: student.status === 'allowed' ? 'denied' as const : 'allowed' as const }
+          : student
+      )
+    );
+    if (apiConnected) {
+      api.toggleStudent(id).catch(() => {});
+    }
+  };
+
+  const handleAddStudent = async (newStudent: Student) => {
     setStudents(prev => [newStudent, ...prev]);
     setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
+    if (apiConnected) {
+      api.createStudent(newStudent).catch(() => {});
+    }
   };
 
-  const handleAddLog = (newLog: AccessLog) => {
+  const handleAddLog = async (newLog: AccessLog) => {
     setLogs(prev => [newLog, ...prev]);
+    if (apiConnected) {
+      api.createLogPublic(newLog).catch(() => {});
+    }
   };
 
   const handleIncrementStats = (isAllowed: boolean) => {
@@ -124,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       handleClearAlerts, handleClearLogs,
       hasCameraPermission, setHasCameraPermission,
       showPermissionGate, setShowPermissionGate,
+      apiConnected,
     }}>
       <ErrorBoundary>
         {children}

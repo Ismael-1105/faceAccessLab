@@ -1,30 +1,43 @@
+'use client';
+
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'motion/react';
 import { Fingerprint, Eye, EyeSlash, ArrowLeft } from '@phosphor-icons/react';
-import { AuthUser } from './types.ts';
-import { MOCK_AUTH_USERS } from './data.ts';
 import { useApp } from './context/AppContext.tsx';
+import { api, setToken } from './lib/api.ts';
 
 export default function LoginView() {
   const { handleLogin } = useApp();
-  const navigate = useNavigate();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const user = MOCK_AUTH_USERS.find(
-      u => u.email === email && u.password === password && u.role === 'docente'
-    );
-    if (user) {
-      handleLogin(user);
-      navigate('/docente');
-    } else {
-      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
+    setLoading(true);
+
+    try {
+      const result = await api.login(email, password);
+      setToken(result.token);
+      handleLogin({
+        id: result.user.id,
+        email: result.user.email,
+        password: '',
+        name: result.user.name,
+        role: result.user.role as 'docente' | 'estudiante',
+        studentId: result.user.studentId,
+      });
+      router.push('/docente');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Credenciales inválidas. Verifica tu correo y contraseña.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -37,7 +50,7 @@ export default function LoginView() {
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         className="relative w-full max-w-md"
       >
-        <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mb-6 transition-colors">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mb-6 transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
           Volver al inicio
         </Link>
@@ -81,11 +94,15 @@ export default function LoginView() {
               </motion.p>
             )}
 
-            <button type="submit" className="w-full bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold py-3 rounded-xl text-sm transition-all cursor-pointer">
-              Iniciar sesión
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold py-3 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-50"
+            >
+              {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
             </button>
 
-            <Link to="/recuperar" className="block w-full text-center text-caption font-semibold text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-all">
+            <Link href="/recuperar" className="block w-full text-center text-caption font-semibold text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-all">
               ¿Olvidaste tu contraseña?
             </Link>
           </form>
@@ -100,4 +117,3 @@ export default function LoginView() {
     </div>
   );
 }
-

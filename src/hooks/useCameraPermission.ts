@@ -21,11 +21,14 @@ export function useCameraPermission() {
 
   const checkPermission = useCallback(async (): Promise<CameraPermissionState> => {
     try {
+      console.log('[useCameraPermission] checkPermission: consultando permisos...');
       const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
       const state = result.state as CameraPermissionState;
+      console.log('[useCameraPermission] checkPermission: estado obtenido:', state);
       setPermissionState(state);
       return state;
-    } catch {
+    } catch (err) {
+      console.log('[useCameraPermission] checkPermission: error/API no soportada:', err);
       const state: CameraPermissionState = 'unsupported';
       setPermissionState(state);
       return state;
@@ -34,14 +37,18 @@ export function useCameraPermission() {
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     try {
+      console.log('[useCameraPermission] requestPermission: solicitando getUserMedia...');
       stopStream();
       const stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS });
+      console.log('[useCameraPermission] requestPermission: stream obtenido, deteniendo...');
       streamRef.current = stream;
       stopStream();
       setPermissionState('granted');
+      console.log('[useCameraPermission] requestPermission: PERMISO CONCEDIDO');
       return true;
     } catch (err) {
       const error = err as DOMException;
+      console.log('[useCameraPermission] requestPermission: ERROR:', error.name, error.message);
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setPermissionState('denied');
       } else {

@@ -67,11 +67,18 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
   };
 
   React.useEffect(() => {
-    if (permissionState === 'prompt' && !hasAutoRequested.current) {
-      hasAutoRequested.current = true;
+    if (hasAutoRequested.current) return;
+    hasAutoRequested.current = true;
+    console.log('[CameraPermissionGate] auto-request programado en 400ms');
+    const timer = setTimeout(() => {
+      console.log('[CameraPermissionGate] ejecutando auto-request');
       handleRequest();
-    }
-  }, [permissionState]);
+    }, 400);
+    return () => {
+      console.log('[CameraPermissionGate] cleanup: cancelando auto-request');
+      clearTimeout(timer);
+    };
+  }, []);
 
   const content = stateContent[permissionState];
 

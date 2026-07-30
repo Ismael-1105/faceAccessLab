@@ -1,11 +1,14 @@
+'use client';
+
 import React from 'react';
-import { Outlet, Link, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Fingerprint, Moon, Sun, Camera, SignOut } from '@phosphor-icons/react';
 import { useApp } from './context/AppContext.tsx';
 
-export default function Layout() {
+export default function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme, user, handleLogout } = useApp();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   return (
     <div className="min-h-screen flex flex-col font-sans antialiased bg-surface dark:bg-zinc-950 text-text-primary dark:text-zinc-100 transition-colors duration-300">
@@ -13,7 +16,7 @@ export default function Layout() {
         Saltar al contenido
       </a>
       <header className="fixed top-0 left-0 w-full z-50 h-16 flex items-center justify-between px-5 md:px-8 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800">
-        <Link to="/" className="flex items-center gap-2.5 select-none">
+        <Link href="/" className="flex items-center gap-2.5 select-none">
           <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center">
             <Fingerprint className="w-4 h-4 text-white" weight="fill" />
           </div>
@@ -36,7 +39,7 @@ export default function Layout() {
 
           {!user && (
             <button
-              onClick={() => navigate('/kiosco')}
+              onClick={() => router.push('/kiosco')}
               className="ml-1 inline-flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold px-4 py-2 rounded-lg text-xs transition-all active:scale-[0.98] border border-zinc-200 dark:border-zinc-700 cursor-pointer"
               aria-label="Abrir kiosco de acceso"
             >
@@ -47,7 +50,7 @@ export default function Layout() {
 
           {user ? (
             <button
-              onClick={() => { handleLogout(); navigate('/'); }}
+              onClick={() => { handleLogout(); router.push('/'); }}
               className="ml-1 inline-flex items-center gap-1.5 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 font-semibold px-4 py-2 rounded-lg text-xs transition-all active:scale-[0.98] border border-red-200 dark:border-red-800/40 cursor-pointer"
               aria-label="Cerrar sesión"
             >
@@ -59,9 +62,8 @@ export default function Layout() {
       </header>
 
       <div id="main-content" className="flex-grow">
-        <Outlet />
+        {children}
       </div>
     </div>
   );
 }
-

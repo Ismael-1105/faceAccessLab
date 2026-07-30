@@ -1,5 +1,7 @@
+'use client';
+
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight, Lightning, Crosshair, Cloud,
@@ -23,9 +25,33 @@ const FLOW_STEPS = [
 ];
 
 export default function HomeView() {
-  const { setShowPermissionGate } = useApp();
-  const navigate = useNavigate();
+  const { setHasCameraPermission, setShowPermissionGate } = useApp();
+  const router = useRouter();
   const [selectedFlowIndex, setSelectedFlowIndex] = useState<number | null>(null);
+  const [requestingCamera, setRequestingCamera] = useState(false);
+
+  const handleAccess = async () => {
+    if (requestingCamera) return;
+    console.log('[Camera] handleAccess: iniciando solicitud de cámara...');
+    setRequestingCamera(true);
+    try {
+      console.log('[Camera] llamando a getUserMedia con facingMode: user');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' }
+      });
+      console.log('[Camera] getUserMedia EXITOSO, tracks:', stream.getTracks().length);
+      stream.getTracks().forEach(track => track.stop());
+      setHasCameraPermission(true);
+      console.log('[Camera] permiso concedido, navegando a /kiosco');
+      router.push('/kiosco');
+    } catch (err) {
+      console.log('[Camera] getUserMedia FALLÓ:', (err as DOMException).name, (err as DOMException).message);
+      setShowPermissionGate(true);
+      router.push('/kiosco');
+    } finally {
+      setRequestingCamera(false);
+    }
+  };
 
   return (
     <main>
@@ -62,14 +88,15 @@ export default function HomeView() {
               className="mt-8 flex flex-col items-center gap-3"
             >
               <button
-                onClick={() => { setShowPermissionGate(true); navigate('/kiosco'); }}
-                className="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold px-8 py-4 rounded-xl text-base transition-all shadow-lg shadow-accent-500/20 dark:shadow-accent-500/10 cursor-pointer"
+                onClick={handleAccess}
+                disabled={requestingCamera}
+                className="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold px-8 py-4 rounded-xl text-base transition-all shadow-lg shadow-accent-500/20 dark:shadow-accent-500/10 cursor-pointer disabled:opacity-60"
               >
-                Acceder al laboratorio
+                {requestingCamera ? 'Solicitando cámara...' : 'Acceder al laboratorio'}
                 <ArrowRight className="w-5 h-5" weight="bold" />
               </button>
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => router.push('/login')}
                 className="text-sm text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
               >
                 ¿Eres docente? Portal Docente →

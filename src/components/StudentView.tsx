@@ -6,6 +6,35 @@ import {
 import { StudentViewType, Student, AccessLog } from '../types.ts';
 import StudentProfile from './StudentProfile.tsx';
 
+function captureFrame(videoEl: HTMLVideoElement): string | null {
+  if (!videoEl || videoEl.readyState < 2) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = videoEl.videoWidth;
+  canvas.height = videoEl.videoHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(videoEl, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+interface RekognitionResult {
+  ok: boolean;
+  match: boolean;
+  studentId?: string;
+  studentName?: string;
+  confidence?: number;
+  faceId?: string;
+}
+
+async function scanWithRekognition(imageBase64: string): Promise<RekognitionResult> {
+  const res = await fetch('/api/rekognition/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64 }),
+  });
+  return res.json();
+}
+
 interface StudentViewProps {
   students: Student[];
   logs: AccessLog[];
@@ -64,9 +93,9 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
   };
 
   useEffect(() => {
-    if (hasCameraPermission && flowState === 'scanning') {
+    if (hasCameraPermission && (flowState === 'scanning' || flowState === 'idle')) {
       startWebcam();
-    } else if (flowState === 'idle' || flowState === 'result') {
+    } else if (flowState === 'result') {
       stopWebcam();
     }
   }, [hasCameraPermission, flowState]);
@@ -76,16 +105,84 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
     return () => { stopWebcam(); };
   }, []);
 
-  const startScan = useCallback(() => {
+  const scanResultRef = useRef<boolean>(false);
+
+  const startScan = useCallback(async () => {
+    scanResultRef.current = false;
     setAutoScanBlocked(false);
-    const newStudent = pickRandomStudent(students);
-    setScannedStudent(newStudent);
-    setSimulatedMatchPct(newStudent.matchPercentage);
     setFlowState('scanning');
     setGlobalProgress(0);
     setCurrentStepIndex(0);
     setAutoScanCountdown(3);
-  }, [students]);
+
+    if (webcamActive && videoRef.current) {
+      const frame = captureFrame(videoRef.current);
+      if (frame) {
+        try {
+          const result = await scanWithRekognition(frame);
+          if (result.ok && result.match && result.studentId) {
+            const matchedStudent = students.find(s => s.id === result.studentId) || {
+              id: result.studentId,
+              name: result.studentName || 'Desconocido',
+              career: '',
+              lab: '',
+              photoUrl: '/images/camera-feed-bg.jpg',
+              matchPercentage: result.confidence || 0,
+              status: 'allowed' as const,
+              avatarInitials: (result.studentName || 'D')[0],
+            };
+            setSimulatedMatchPct(result.confidence || 0);
+            setScannedStudent(matchedStudent);
+            scanResultRef.current = true;
+            setGlobalProgress(100);
+            setFlowState('result');
+            finishScan(matchedStudent);
+          } else {
+            setScannedStudent(students.find(s => s.status === 'denied') || students[4]);
+            setSimulatedMatchPct(22.8);
+            scanResultRef.current = true;
+            setGlobalProgress(100);
+            setFlowState('result');
+            finishScan(students.find(s => s.status === 'denied') || students[4]);
+          }
+        } catch {
+          goSimulated();
+        }
+      } else {
+        goSimulated();
+      }
+    } else {
+      goSimulated();
+    }
+
+    function goSimulated() {
+      const newStudent = pickRandomStudent(students);
+      setScannedStudent(newStudent);
+      setSimulatedMatchPct(newStudent.matchPercentage);
+    }
+
+    function finishScan(student: Student) {
+      setLockCountdown(10);
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const isAllowed = student.status === 'allowed';
+      const newLog: AccessLog = {
+        id: 'log-' + Math.random().toString(36).substr(2, 9),
+        studentId: student.id,
+        studentName: isAllowed ? student.name : 'Persona Desconocida',
+        avatarInitials: student.avatarInitials,
+        date: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+        result: isAllowed ? 'Permitido' : 'Denegado',
+        similarity: parseFloat((isAllowed ? simulatedMatchPct : 22.8).toFixed(1)),
+      };
+      onAddLog(newLog);
+      incrementStats(isAllowed);
+      if (isAllowed) {
+        setTimeout(() => setActiveView('profile'), 2500);
+      }
+    }
+  }, [students, webcamActive, onAddLog, incrementStats]);
 
   const handleCancelAutoScan = () => {
     if (countdownTimerRef.current) {
@@ -131,69 +228,69 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
   }, [flowState, autoScanBlocked, startScan]);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    if (flowState === 'scanning') {
+    if (flowState === 'scanning' && !scanResultRef.current) {
       if (scannedStudent.status === 'denied') {
         setSimulatedMatchPct(22.8);
       } else {
         const dev = parseFloat((Math.random() * 0.9).toFixed(1));
         setSimulatedMatchPct(parseFloat((scannedStudent.matchPercentage - dev).toFixed(1)));
       }
-      timer = setTimeout(() => {
+      const timer = setTimeout(() => {
         setFlowState('processing');
         setGlobalProgress(25);
         setCurrentStepIndex(0);
       }, 2200);
-    } else if (flowState === 'processing') {
-      const interval = setInterval(() => {
-        setGlobalProgress(prev => {
-          const nextVal = prev + Math.floor(Math.random() * 6) + 3;
-          if (nextVal >= 100) {
-            clearInterval(interval);
-            setFlowState('result');
-            setLockCountdown(10);
-
-            const now = new Date();
-            const pad = (n: number) => n.toString().padStart(2, '0');
-            const h = pad(now.getHours());
-            const m = pad(now.getMinutes());
-            const s = pad(now.getSeconds());
-
-            const isAllowed = scannedStudent.status === 'allowed';
-            const similarityScore = isAllowed ? simulatedMatchPct : 22.8;
-
-            const newLog: AccessLog = {
-              id: 'log-' + Math.random().toString(36).substr(2, 9),
-              studentId: scannedStudent.id,
-              studentName: isAllowed ? scannedStudent.name : 'Persona Desconocida',
-              avatarInitials: scannedStudent.avatarInitials,
-              date: `${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-              time: `${h}:${m}:${s}`,
-              result: isAllowed ? 'Permitido' : 'Denegado',
-              similarity: parseFloat(similarityScore.toFixed(1))
-            };
-
-            onAddLog(newLog);
-            incrementStats(isAllowed);
-
-            if (isAllowed) {
-              setTimeout(() => {
-                setActiveView('profile');
-              }, 2500);
-            }
-
-            return 100;
-          }
-          if (nextVal >= 80) setCurrentStepIndex(3);
-          else if (nextVal >= 60) setCurrentStepIndex(2);
-          else if (nextVal >= 40) setCurrentStepIndex(1);
-          return nextVal;
-        });
-      }, 180);
-      return () => clearInterval(interval);
+      return () => clearTimeout(timer);
     }
-    return () => clearTimeout(timer);
   }, [flowState]);
+
+  useEffect(() => {
+    if (flowState !== 'processing' || scanResultRef.current) return;
+    const interval = setInterval(() => {
+      setGlobalProgress(prev => {
+        const nextVal = prev + Math.floor(Math.random() * 6) + 3;
+        if (nextVal >= 100) {
+          clearInterval(interval);
+          setFlowState('result');
+          setLockCountdown(10);
+
+          const now = new Date();
+          const pad = (n: number) => n.toString().padStart(2, '0');
+          const h = pad(now.getHours());
+          const m = pad(now.getMinutes());
+          const s = pad(now.getSeconds());
+
+          const isAllowed = scannedStudent.status === 'allowed';
+          const similarityScore = isAllowed ? simulatedMatchPct : 22.8;
+
+          const newLog: AccessLog = {
+            id: 'log-' + Math.random().toString(36).substr(2, 9),
+            studentId: scannedStudent.id,
+            studentName: isAllowed ? scannedStudent.name : 'Persona Desconocida',
+            avatarInitials: scannedStudent.avatarInitials,
+            date: `${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+            time: `${h}:${m}:${s}`,
+            result: isAllowed ? 'Permitido' : 'Denegado',
+            similarity: parseFloat(similarityScore.toFixed(1))
+          };
+
+          onAddLog(newLog);
+          incrementStats(isAllowed);
+
+          if (isAllowed) {
+            setTimeout(() => setActiveView('profile'), 2500);
+          }
+
+          return 100;
+        }
+        if (nextVal >= 80) setCurrentStepIndex(3);
+        else if (nextVal >= 60) setCurrentStepIndex(2);
+        else if (nextVal >= 40) setCurrentStepIndex(1);
+        return nextVal;
+      });
+    }, 180);
+    return () => clearInterval(interval);
+  }, [flowState, scannedStudent, simulatedMatchPct, onAddLog, incrementStats]);
 
   useEffect(() => {
     let countdownTimer: ReturnType<typeof setTimeout>;
@@ -271,7 +368,16 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
           <div className="md:col-span-7 flex flex-col">
             <div className="relative bg-zinc-900 rounded-2xl overflow-hidden flex-1 min-h-[360px] md:min-h-[440px] border border-zinc-800 shadow-xl flex flex-col justify-between">
               <div className="absolute inset-0 z-0">
-                {flowState === 'idle' ? (
+                {hasCameraPermission && webcamActive && flowState !== 'result' ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover scale-x-[-1] cursor-crosshair"
+                    aria-label="Feed de cámara en vivo del kiosco"
+                  />
+) : flowState === 'idle' ? (
                   <div className="w-full h-full relative">
                     <img
                       className="w-full h-full object-cover opacity-40 filter blur-[1px]"
@@ -281,15 +387,6 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                     />
                     <div className="absolute inset-0 bg-accent-950/10 mix-blend-color" />
                   </div>
-) : hasCameraPermission && webcamActive ? (
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover scale-x-[-1] opacity-70 cursor-crosshair"
-                    aria-label="Feed de cámara en vivo del kiosco"
-                  />
 ) : (
                   <div className="w-full h-full relative cursor-crosshair">
                     <img
@@ -311,20 +408,47 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                   </span>
                 </div>
 
-                {(flowState === 'scanning' || flowState === 'processing') && (
-                  <div className="self-center relative w-48 h-56 rounded-xl flex items-center justify-center">
-                    <span className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-white/40 rounded-tl" />
-                    <span className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-white/40 rounded-tr" />
-                    <span className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-white/40 rounded-bl" />
-                    <span className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-white/40 rounded-br" />
-                    <img
-                      src="/images/scan-demo-profile.jpg"
-                      alt="Escaneo facial"
-                      className="absolute inset-0 w-full h-full object-cover rounded-xl opacity-60"
-                      onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}
-                    />
+                {/* Instruction overlay — visible on idle + scanning + processing */}
+                <div className="flex flex-col items-center gap-2">
+                  {(flowState === 'scanning' || flowState === 'processing') && (
+                    <div className="self-center relative w-48 h-56 rounded-xl flex items-center justify-center">
+                      <span className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-white/40 rounded-tl" />
+                      <span className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-white/40 rounded-tr" />
+                      <span className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-white/40 rounded-bl" />
+                      <span className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-white/40 rounded-br" />
+                      <img
+                        src="/images/scan-demo-profile.jpg"
+                        alt="Escaneo facial"
+                        className="absolute inset-0 w-full h-full object-cover rounded-xl opacity-60"
+                        onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}
+                      />
+                    </div>
+                  )}
+                  {/* Guidance text */}
+                  <div className={`transition-all duration-300 ${flowState === 'idle' || flowState === 'scanning' || flowState === 'processing' ? 'opacity-100' : 'opacity-0'}`}>
+                    {flowState === 'idle' && (
+                      <div className="bg-zinc-950/80 backdrop-blur px-5 py-2.5 rounded-xl border border-white/10 text-center">
+                        <p className="text-white text-sm font-semibold">Colócate frente a la cámara</p>
+                        <p className="text-zinc-400 text-label mt-0.5">El escaneo iniciará automáticamente</p>
+                      </div>
+                    )}
+                    {flowState === 'scanning' && (
+                      <div className="bg-accent-600/90 backdrop-blur px-5 py-2.5 rounded-xl border border-accent-400/30 text-center">
+                        <p className="text-white text-sm font-bold flex items-center justify-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                          No te muevas — Escaneo en curso
+                        </p>
+                        <p className="text-accent-200 text-label mt-0.5">Mantén el rostro centrado para mayor precisión</p>
+                      </div>
+                    )}
+                    {flowState === 'processing' && (
+                      <div className="bg-zinc-950/80 backdrop-blur px-5 py-2.5 rounded-xl border border-white/10 text-center">
+                        <p className="text-white text-sm font-semibold">Procesando datos biométricos...</p>
+                        <p className="text-zinc-400 text-label mt-0.5">No te retires del frente de la cámara</p>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
                 <div className="flex justify-between items-end">
                   <div className="bg-zinc-950/95 px-4 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur">

@@ -1,3 +1,5 @@
+'use client';
+
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { WarningOctagon } from '@phosphor-icons/react';
 
