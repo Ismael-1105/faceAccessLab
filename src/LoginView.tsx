@@ -52,7 +52,7 @@ export default function LoginView() {
       >
         <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mb-6 transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
-          Volver al inicio
+          Volver al inicio 1
         </Link>
 
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-8">
