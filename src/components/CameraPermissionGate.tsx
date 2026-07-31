@@ -57,7 +57,7 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
     try {
       const granted = await requestPermission();
       if (granted) {
-        setTimeout(onProceed, 600);
+        onProceed();
       }
     } catch {
       // Error handled: state stays at permissionState value
@@ -69,16 +69,17 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
   React.useEffect(() => {
     if (hasAutoRequested.current) return;
     hasAutoRequested.current = true;
-    console.log('[CameraPermissionGate] auto-request programado en 400ms');
     const timer = setTimeout(() => {
-      console.log('[CameraPermissionGate] ejecutando auto-request');
       handleRequest();
-    }, 400);
-    return () => {
-      console.log('[CameraPermissionGate] cleanup: cancelando auto-request');
-      clearTimeout(timer);
-    };
+    }, 200);
+    return () => clearTimeout(timer);
   }, []);
+
+  React.useEffect(() => {
+    if (permissionState === 'granted') {
+      onProceed();
+    }
+  }, [permissionState, onProceed]);
 
   const content = stateContent[permissionState];
 

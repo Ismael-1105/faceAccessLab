@@ -6,9 +6,9 @@ import {
   DeleteFacesCommand,
   ListCollectionsCommand,
   ListFacesCommand,
+  DetectFacesCommand,
 } from '@aws-sdk/client-rekognition';
-import { connectDB } from './db.ts';
-import { Student } from './models.ts';
+import { Metrics } from './cloudwatch.ts';
 
 const COLLECTION_ID = 'faceaccess-lab-students';
 
@@ -79,20 +79,18 @@ export async function indexFace(imageBytes: Uint8Array, studentId: string): Prom
   }
 
   const faceId = faceRecord.Face.FaceId;
+  const quality = faceRecord.FaceDetail?.Quality?.Sharpness ?? 0;
 
-  await connectDB();
-  await Student.findOneAndUpdate(
-    { id: studentId },
-    { $set: { faceEmbeddingId: faceId } }
-  );
-
-  console.log(`[Rekognition] Face indexed for student ${studentId} → faceId ${faceId}`);
+  console.log(`[Rekognition] Face indexed: student=${studentId} faceId=${faceId} confidence=${faceRecord.Face.Confidence ?? 0} sharpness=${quality}`);
+  Metrics.facesIndexed();
   return faceId;
 }
 
 export async function searchFace(imageBytes: Uint8Array): Promise<FaceMatchResult> {
   await ensureCollection();
   const rekognition = getClient();
+
+  const start = Date.now();
 
   try {
     const result = await rekognition.send(
@@ -103,6 +101,9 @@ export async function searchFace(imageBytes: Uint8Array): Promise<FaceMatchResul
         FaceMatchThreshold: 85,
       })
     );
+
+    Metrics.facesSearched();
+    Metrics.rekognitionLatency(Date.now() - start);
 
     const bestMatch = result.FaceMatches?.[0];
     if (!bestMatch?.Face) {
@@ -115,23 +116,12 @@ export async function searchFace(imageBytes: Uint8Array): Promise<FaceMatchResul
       };
     }
 
-    const externalImageId = bestMatch.Face.ExternalImageId || null;
-    const confidence = bestMatch.Face.Confidence ?? 0;
-    const faceId = bestMatch.Face.FaceId || null;
-
-    let studentName: string | null = null;
-    if (externalImageId) {
-      await connectDB();
-      const student = await Student.findOne({ id: externalImageId });
-      studentName = student?.name || null;
-    }
-
     return {
-      studentId: externalImageId,
-      studentName,
-      confidence: parseFloat(confidence.toFixed(1)),
-      faceId,
-      externalImageId,
+      studentId: bestMatch.Face.ExternalImageId || null,
+      studentName: null,
+      confidence: parseFloat((bestMatch.Face.Confidence ?? 0).toFixed(1)),
+      faceId: bestMatch.Face.FaceId || null,
+      externalImageId: bestMatch.Face.ExternalImageId || null,
     };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -179,4 +169,49 @@ export async function listFaces(): Promise<{ faceId: string; studentId: string }
   } while (token);
 
   return faces;
+}
+
+export interface FaceAttributes {
+  faceDetected: boolean;
+  eyesOpen: boolean | null;
+  smiling: boolean | null;
+  mouthOpen: boolean | null;
+  yaw: number | null;
+  sharpness: number;
+  brightness: number;
+}
+
+export async function detectFaceAttributes(imageBytes: Uint8Array): Promise<FaceAttributes> {
+  const rekognition = getClient();
+
+  const result = await rekognition.send(
+    new DetectFacesCommand({
+      Image: { Bytes: imageBytes },
+      Attributes: ['DEFAULT'],
+    })
+  );
+
+  const detail = result.FaceDetails?.[0];
+
+  if (!detail) {
+    return {
+      faceDetected: false,
+      eyesOpen: null,
+      smiling: null,
+      mouthOpen: null,
+      yaw: null,
+      sharpness: 0,
+      brightness: 0,
+    };
+  }
+
+  return {
+    faceDetected: true,
+    eyesOpen: detail.EyesOpen?.Value ?? null,
+    smiling: detail.Smile?.Value ?? null,
+    mouthOpen: detail.MouthOpen?.Value ?? null,
+    yaw: detail.Pose?.Yaw ?? null,
+    sharpness: detail.Quality?.Sharpness ?? 0,
+    brightness: detail.Quality?.Brightness ?? 0,
+  };
 }

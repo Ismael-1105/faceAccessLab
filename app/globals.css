@@ -111,3 +111,139 @@ body {
 .skip-link:focus {
   top: 0;
 }
+
+@keyframes flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2.5s ease-in-out infinite;
+}
+
+/* ═══════════════ Overrides Face Liveness (Amplify) ═══════════════ */
+/* El video y su contenedor deben llenar TODO el viewport de la cámara,
+   sin fondo blanco ni recortes de óvalo. El óvalo queda como overlay
+   semitransparente superpuesto, no como máscara de recorte. */
+
+.amplify-liveness-camera-module {
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.amplify-liveness-video-anchor {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  flex-grow: 1 !important;
+}
+
+.amplify-liveness-video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  transform: scaleX(-1) !important;
+}
+
+/* El óvalo NO recorta el video: queda como guía semitransparente superpuesta */
+.amplify-liveness-oval-canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
+/* Elimina el fondo opaco que generaba el rectángulo blanco/gris */
+.amplify-liveness-overlay-opaque {
+  background-color: transparent !important;
+}
+
+.amplify-liveness-overlay {
+  padding: 1rem !important;
+  justify-content: space-between !important;
+}
+
+/* Badges flotantes con fondo semitransparente */
+.amplify-liveness-cancel-container {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(8px) !important;
+  border-radius: 12px !important;
+  padding: 0.5rem !important;
+}
+
+.amplify-liveness-recording-icon-container {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(8px) !important;
+  border-radius: 12px !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+/* Indicador de progreso flotante arriba, sin tapar la cara */
+.amplify-liveness-instruction-overlay {
+  z-index: 3 !important;
+}
+
+/* Quita bordes y fondos que crean el marco blanco */
+.amplify-liveness-camera-module--mobile {
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+/* ═══════════════ Animaciones del kiosco ═══════════════ */
+@keyframes kiosk-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes kiosk-scale-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes kiosk-message-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-kiosk-fade-in {
+  animation: kiosk-fade-in 200ms ease-out both;
+}
+
+.animate-kiosk-scale-in {
+  animation: kiosk-scale-in 200ms ease-out both;
+}
+
+.animate-kiosk-message {
+  animation: kiosk-message-in 250ms ease-out both;
+}
+
+/* Máscara de guía biométrica: fondo semitransparente + óvalo transparente */
+.biometric-mask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.biometric-mask .mask-ellipse {
+  animation: pulse-slow 2.5s ease-in-out infinite;
+}

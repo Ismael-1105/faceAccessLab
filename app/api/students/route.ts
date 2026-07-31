@@ -1,11 +1,16 @@
-import { handleGetStudents, handleCreateStudent, handleUpdateStudent, handleToggleStudent } from '@/lib/handlers';
+import {
+  handleGetStudents,
+  handleCreateStudent,
+  handleUpdateStudent,
+  handleDeleteStudent,
+} from '@/lib/handlers';
 
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
@@ -21,4 +26,8 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   return handleUpdateStudent(req);
+}
+
+export async function DELETE(req: Request) {
+  return handleDeleteStudent(req);
 }

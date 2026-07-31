@@ -1,6 +1,15 @@
-import { searchFace, FaceMatchResult } from '@/lib/rekognition';
+import { searchFace } from '@/lib/rekognition';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for') || 'unknown';
+  if (!checkRateLimit(`rekognition:${ip}`, 10)) {
+    return new Response(JSON.stringify({ error: 'Demasiadas solicitudes. Espera un minuto.' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const { imageBase64 } = await req.json() as { imageBase64?: string };
 
@@ -13,7 +22,7 @@ export async function POST(req: Request) {
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
 
-    const result: FaceMatchResult = await searchFace(imageBytes);
+    const result = await searchFace(imageBytes);
 
     if (result.externalImageId) {
       return new Response(JSON.stringify({

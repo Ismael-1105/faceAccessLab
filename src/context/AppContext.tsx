@@ -30,7 +30,6 @@ interface AppContextType {
   setHasCameraPermission: React.Dispatch<React.SetStateAction<boolean>>;
   showPermissionGate: boolean;
   setShowPermissionGate: React.Dispatch<React.SetStateAction<boolean>>;
-  apiConnected: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -42,14 +41,13 @@ export function useApp() {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('theme') as Theme | null;
-      if (stored) return stored;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
-  });
+  const [theme, setTheme] = useState<Theme>('light');
+
+  useEffect(() => {
+    const stored = localStorage.getItem('theme') as Theme | null;
+    const initial = stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    setTheme(initial);
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => {
@@ -64,14 +62,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.classList.toggle('light', theme === 'light');
-  }, []);
+  }, [theme]);
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
   const [logs, setLogs] = useState<AccessLog[]>([]);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [showPermissionGate, setShowPermissionGate] = useState(false);
-  const [apiConnected, setApiConnected] = useState(false);
 
   const [stats, setStats] = useState({
     registered: DAILY_STATS.registered,
@@ -107,10 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         api.getStats().catch(() => null),
         api.getAlerts().catch(() => null),
       ]).then(([studentsData, logsData, statsData]) => {
-        if (studentsData) {
-          setStudents(studentsData);
-          setApiConnected(true);
-        }
+        if (studentsData) setStudents(studentsData);
         if (logsData) setLogs(logsData);
         if (statsData) setStats(statsData);
       });
@@ -124,6 +118,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const handleToggleStudent = async (id: string) => {
+    const prevStudents = students;
     setStudents(prev =>
       prev.map(student =>
         student.id === id
@@ -131,24 +126,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : student
       )
     );
-    if (apiConnected) {
-      api.toggleStudent(id).catch(() => {});
+    try {
+      await api.toggleStudent(id);
+    } catch {
+      setStudents(prevStudents);
     }
   };
 
   const handleAddStudent = async (newStudent: Student) => {
-    setStudents(prev => [newStudent, ...prev]);
-    setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
-    if (apiConnected) {
-      api.createStudent(newStudent).catch(() => {});
+    try {
+      const created = await api.createStudent(newStudent);
+      setStudents(prev => [created, ...prev]);
+      setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
+    } catch {
+      setStudents(prev => [newStudent, ...prev]);
+      setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
     }
   };
 
   const handleAddLog = async (newLog: AccessLog) => {
     setLogs(prev => [newLog, ...prev]);
-    if (apiConnected) {
-      api.createLogPublic(newLog).catch(() => {});
-    }
+    try {
+      await api.createLogPublic(newLog);
+    } catch {}
   };
 
   const handleIncrementStats = (isAllowed: boolean) => {
@@ -177,7 +177,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       handleClearAlerts, handleClearLogs,
       hasCameraPermission, setHasCameraPermission,
       showPermissionGate, setShowPermissionGate,
-      apiConnected,
     }}>
       <ErrorBoundary>
         {children}

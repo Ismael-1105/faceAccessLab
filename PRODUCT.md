@@ -18,7 +18,7 @@ Sistema inteligente de control de acceso por reconocimiento facial para laborato
 
 ## Positioning
 
-Control de acceso biométrico universitario que combina reconocimiento facial con una arquitectura cloud serverless (AWS Rekognition, Lambda, DynamoDB) representada visualmente como consola de servicios. El valor diferencial está en la integración del pipeline de escaneo facial (detección → prueba de vida → comparación → permiso) con un dashboard administrativo completo, todo presentado como demo funcional de concepto.
+Control de acceso biométrico universitario que combina reconocimiento facial con una arquitectura cloud serverless (AWS Rekognition, Lambda, MongoDB Atlas) representada visualmente como consola de servicios. El valor diferencial está en la integración del pipeline de escaneo facial (detección → prueba de vida → comparación → permiso) con un dashboard administrativo completo, todo presentado como demo funcional de concepto.
 
 ## Operating Context
 

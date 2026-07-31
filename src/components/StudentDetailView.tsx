@@ -4,7 +4,7 @@ import {
   ArrowLeft, CheckCircle, XCircle, SignIn, Clock, CalendarBlank,
   IdentificationBadge, Flask, User, Fingerprint,
   CaretLeft, CaretRight, Database, WarningCircle,
-  GraduationCap, Prohibit
+  GraduationCap, Prohibit, Trash
 } from '@phosphor-icons/react';
 import type { Student, AccessLog } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
@@ -15,6 +15,7 @@ interface StudentDetailViewProps {
   logs: AccessLog[];
   onToggleStatus: (id: string) => void;
   onBack: () => void;
+  onDelete?: (id: string) => void;
 }
 
 const ITEMS_PER_PAGE = 8;
@@ -146,7 +147,7 @@ function AccessLogRow({ log }: { log: AccessLog }) {
   );
 }
 
-export default function StudentDetailView({ student, logs, onToggleStatus, onBack }: StudentDetailViewProps) {
+export default function StudentDetailView({ student, logs, onToggleStatus, onBack, onDelete }: StudentDetailViewProps) {
   const studentLogs = useMemo(() => logs.filter(l => l.studentId === student.id), [logs, student.id]);
   const total = studentLogs.length;
   const permitidos = studentLogs.filter(l => l.result === 'Permitido').length;
@@ -158,6 +159,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
   const [statusFilter, setStatusFilter] = useState<'all' | 'Permitido' | 'Denegado'>('all');
   const [page, setPage] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const filteredLogs = useMemo(() => {
     let result = studentLogs;
@@ -266,6 +268,15 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
                 }
                 {student.status === 'allowed' ? 'Suspender' : 'Reintegrar'}
               </button>
+              {onDelete && (
+                <button
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] inline-flex items-center gap-1.5 cursor-pointer bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 border border-zinc-200 dark:border-zinc-700"
+                >
+                  <Trash className="w-4 h-4" weight="regular" />
+                  Eliminar
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -411,6 +422,16 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
         variant={student.status === 'allowed' ? 'danger' : 'default'}
         onConfirm={() => { onToggleStatus(student.id); setConfirmOpen(false); }}
         onCancel={() => setConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Eliminar alumno"
+        message={`¿Estás seguro de eliminar a ${student.name}? Se eliminará su registro biométrico, foto y todos los accesos asociados. Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar permanentemente"
+        variant="danger"
+        onConfirm={() => { onDelete?.(student.id); setDeleteConfirmOpen(false); }}
+        onCancel={() => setDeleteConfirmOpen(false)}
       />
     </motion.div>
   );

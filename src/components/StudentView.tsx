@@ -5,17 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import { StudentViewType, Student, AccessLog } from '../types.ts';
 import StudentProfile from './StudentProfile.tsx';
-
-function captureFrame(videoEl: HTMLVideoElement): string | null {
-  if (!videoEl || videoEl.readyState < 2) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = videoEl.videoWidth;
-  canvas.height = videoEl.videoHeight;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(videoEl, 0, 0);
-  return canvas.toDataURL('image/jpeg', 0.85);
-}
+import { captureFrame } from '../../lib/capture.ts';
 
 interface RekognitionResult {
   ok: boolean;

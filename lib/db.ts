@@ -3,13 +3,15 @@ import dns from 'dns';
 
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
-
-if (!MONGODB_URI) {
-  throw new Error('MONGODB_URI no está definida en las variables de entorno');
-}
-
 let isConnecting = false;
+
+function getMongoUri(): string {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error('MONGODB_URI no está definida en las variables de entorno');
+  }
+  return uri;
+}
 
 export async function connectDB(): Promise<typeof mongoose> {
   if (mongoose.connection.readyState === 1) {
@@ -32,7 +34,7 @@ export async function connectDB(): Promise<typeof mongoose> {
   console.log('[DB] Connecting to MongoDB...');
 
   try {
-    await mongoose.connect(MONGODB_URI!, {
+    await mongoose.connect(getMongoUri(), {
       serverSelectionTimeoutMS: 15000,
       connectTimeoutMS: 15000,
     });

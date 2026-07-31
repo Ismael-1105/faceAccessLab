@@ -1,23 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
-  X, User, Student as StudentIcon, Flask, Camera as CameraIcon, CheckCircle, ArrowRight, ArrowLeft,
-  Image as ImageIcon, UploadSimple, Scan, Fingerprint, WarningOctagon
+  X, User, Student as StudentIcon, Flask, Camera as CameraIcon, CheckCircle,
+  ArrowRight, Image as ImageIcon, Scan, Fingerprint, WarningOctagon,
+  IdentificationBadge, Envelope, Phone, ShieldCheck, CircleNotch, CaretDown
 } from '@phosphor-icons/react';
-import type { Student } from '../types.ts';
+import type { Student, Career } from '../types.ts';
+import { CAREERS } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
-async function registerFaceInRekognition(studentId: string, imageBase64: string): Promise<boolean> {
+async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url: string; key: string } | null> {
   try {
-    const res = await fetch('/api/rekognition/register', {
+    const res = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, imageBase64 }),
+      body: JSON.stringify({ imageBase64, studentId }),
     });
     const data = await res.json();
-    return data.ok === true;
-  } catch {
-    return false;
+    if (data.ok) return { url: data.url, key: data.key };
+    console.error('[Upload] Respuesta no-ok:', data.error || data);
+    return null;
+  } catch (err) {
+    console.error('[Upload] Error de red al subir a S3:', err);
+    return null;
   }
 }
 
@@ -26,43 +31,55 @@ interface EnrollmentViewProps {
   onCancel: () => void;
 }
 
-type StepIndex = 0 | 1 | 2;
-
-const STEPS = [
-  { label: 'Datos personales', icon: User },
-  { label: 'Captura biométrica', icon: CameraIcon },
-  { label: 'Confirmación', icon: CheckCircle },
-];
-
 const LABS = [
-  { value: 'LAB-01', label: 'LAB-01 (Redes)' },
-  { value: 'LAB-02', label: 'LAB-02 (Sistemas Operativos)' },
-  { value: 'Biblioteca', label: 'Biblioteca del Campus' },
+  { value: 'LAB-02', label: 'LAB-02 (Sistemas Operativos)', desc: 'Laboratorio de sistemas operativos' },
 ];
 
 const DEFAULT_AVATAR = '/images/default-avatar.jpg';
 
+const inputClass =
+  'w-full text-xs p-3 pl-10 rounded-xl border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all';
+
 export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewProps) {
-  const [step, setStep] = useState<StepIndex>(0);
-  const [name, setName] = useState('');
-  const [career, setCareer] = useState('');
-  const [lab, setLab] = useState('LAB-02');
-  const [matchPct, setMatchPct] = useState(95);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [documentId, setDocumentId] = useState('');
+  const [email, setEmail] = useState('');
+  const [career, setCareer] = useState<Career | ''>('');
+  const [phone, setPhone] = useState('');
+  const [selectedLabs, setSelectedLabs] = useState<string[]>([]);
+
   const [useWebcam, setUseWebcam] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [showFlash, setShowFlash] = useState(false);
+  const [captureSuccess, setCaptureSuccess] = useState(false);
   const [webcamError, setWebcamError] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [capturedBlobUrl, setCapturedBlobUrl] = useState<string | null>(null);
+  const [registrationError, setRegistrationError] = useState('');
+
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (capturedBlobUrl) URL.revokeObjectURL(capturedBlobUrl);
     };
+  }, [stream, capturedBlobUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    video.onloadedmetadata = () => video.play().catch(() => {});
+    return () => { video.srcObject = null; };
   }, [stream]);
 
   const startWebcam = async () => {
@@ -70,14 +87,12 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
       setWebcamError(false);
       if (stream) stream.getTracks().forEach(t => t.stop());
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' }
+        video: { width: 640, height: 480, facingMode: 'user' },
       });
       setStream(s);
       setUseWebcam(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-      }
-    } catch {
+    } catch (err) {
+      console.error('[Webcam] Error:', err);
       setUseWebcam(false);
       setWebcamError(true);
     }
@@ -89,314 +104,468 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
       setStream(null);
     }
     setUseWebcam(false);
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  const startCountdown = () => {
+    if (!videoRef.current) return;
+    setCountdown(3);
+    setIsCapturing(true);
+
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          capturePhoto();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 800);
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    setShowFlash(true);
+    setTimeout(() => setShowFlash(false), 300);
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    setCapturedImage(dataUrl);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        if (capturedBlobUrl) URL.revokeObjectURL(capturedBlobUrl);
+        setCapturedBlobUrl(URL.createObjectURL(blob));
+        const reader = new FileReader();
+        reader.onloadend = () => setCapturedImage(reader.result as string);
+        reader.readAsDataURL(blob);
+      },
+      'image/jpeg',
+      0.85,
+    );
+
     stopWebcam();
     setIsCapturing(false);
+    setCaptureSuccess(true);
+    setTimeout(() => setCaptureSuccess(false), 1500);
   };
 
-  const [registering, setRegistering] = useState(false);
+  const toggleLab = (lab: string) => {
+    setSelectedLabs(prev =>
+      prev.includes(lab) ? prev.filter(l => l !== lab) : [...prev, lab],
+    );
+  };
+
+  const clearForm = () => {
+    setFirstName('');
+    setLastName('');
+    setDocumentId('');
+    setEmail('');
+    setCareer('');
+    setPhone('');
+    setSelectedLabs([]);
+    setCapturedImage(null);
+    setCapturedBlobUrl(null);
+    setCaptureSuccess(false);
+    setRegistrationError('');
+    stopWebcam();
+  };
 
   const handleSubmit = async () => {
-    const initials = name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'N';
+    setRegistering(true);
+    setRegistrationError('');
+
+    const fullName = `${firstName} ${lastName}`.trim();
+    const initials = fullName.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'N';
     const studentId = 'student-' + Math.random().toString(36).substr(2, 9);
+
+    let s3Url: string | null = null;
+    let s3Key: string | null = null;
+    let faceId: string | null = null;
+
+    if (capturedImage && capturedImage.startsWith('data:')) {
+      const s3Result = await uploadToS3(capturedImage, studentId);
+      if (!s3Result) {
+        setRegistrationError('Error al subir la imagen. Verifica tu conexión.');
+        setRegistering(false);
+        return;
+      }
+      s3Url = s3Result.url;
+      s3Key = s3Result.key;
+
+      const rekogRes = await fetch('/api/rekognition/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, imageBase64: capturedImage }),
+      });
+      const rekogData = await rekogRes.json();
+
+      if (!rekogData.ok) {
+        setRegistrationError(rekogData.message || 'Error al registrar el rostro. Intenta de nuevo.');
+        setRegistering(false);
+        return;
+      }
+
+      faceId = rekogData.faceId || null;
+    }
+
     const student: Student = {
       id: studentId,
-      name,
+      name: fullName,
+      lastName: lastName.trim() || undefined,
+      documentId: documentId.trim() || undefined,
+      email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
       career,
-      lab,
-      photoUrl: capturedImage || DEFAULT_AVATAR,
-      matchPercentage: matchPct,
+      lab: selectedLabs[0] || 'LAB-02',
+      labs: selectedLabs,
+      photoUrl: s3Url || DEFAULT_AVATAR,
+      photoKey: s3Key || undefined,
+      faceEmbeddingId: faceId || undefined,
+      matchPercentage: 85,
       status: 'allowed',
       avatarInitials: initials,
     };
 
-    if (capturedImage && capturedImage !== DEFAULT_AVATAR) {
-      setRegistering(true);
-      const registered = await registerFaceInRekognition(studentId, capturedImage);
-      setRegistering(false);
-      console.log(registered ? '[Rekognition] Face registered' : '[Rekognition] Registration skipped');
-    }
-
+    setRegistering(false);
     onComplete(student);
   };
 
-  const hasEnteredData = name.trim().length > 0 || career.trim().length > 0 || capturedImage !== null;
+  const hasEnteredData =
+    firstName.trim().length > 0 || lastName.trim().length > 0 || career.trim().length > 0 ||
+    capturedImage !== null || selectedLabs.length > 0;
 
   const handleCancel = () => {
-    if (hasEnteredData) {
-      setConfirmCancelOpen(true);
-    } else {
-      onCancel();
-    }
+    setRegistrationError('');
+    if (hasEnteredData) setConfirmCancelOpen(true);
+    else onCancel();
   };
 
-  const canGoNext = () => {
-    if (step === 0) return name.trim().length > 0 && career.trim().length > 0;
-    if (step === 1) return capturedImage !== null;
-    return true;
-  };
+  const infoValid = firstName.trim().length > 0 && career.trim().length > 0;
+  const canSubmit = infoValid && selectedLabs.length > 0 && capturedImage !== null && !registering;
+
+  // Stepper del registro biométrico
+  const bioSteps = [
+    { id: 'camera', label: 'Cámara activa', done: useWebcam || capturedImage !== null },
+    { id: 'captured', label: 'Captura completada', done: capturedImage !== null },
+    { id: 'uploading', label: 'Registrando biometría', done: registering, active: registering },
+    { id: 'complete', label: 'Registro exitoso', done: false },
+  ];
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden max-w-2xl"
+      className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden max-w-6xl w-full"
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-5 border-b border-zinc-100 dark:border-zinc-800">
+      <div className="flex items-center justify-between p-5 md:p-6 border-b border-zinc-100 dark:border-zinc-800">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-accent-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-accent-600 flex items-center justify-center">
             <Fingerprint className="w-5 h-5 text-white" weight="fill" />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-zinc-900 dark:text-white">Matriculación Biométrica</h3>
-            <p className="text-label text-zinc-400 dark:text-zinc-500">Registro de nuevo alumno</p>
+            <h3 className="font-bold text-base text-zinc-900 dark:text-white">Matriculación Biométrica</h3>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">Registro de nuevo alumno</p>
           </div>
         </div>
         <button
           onClick={handleCancel}
-          className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          className="p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          aria-label="Cerrar"
         >
           <X className="w-4 h-4" weight="bold" />
         </button>
       </div>
 
-      {/* Steps indicator */}
-      <div className="flex px-5 pt-5 pb-0 gap-0">
-        {STEPS.map((s, i) => (
-          <div key={s.label} className="flex-1 flex items-center">
-            <div className={`flex items-center gap-2 ${i <= step ? 'text-accent-600 dark:text-accent-400' : 'text-zinc-300 dark:text-zinc-600'}`}>
-              {i < step ? (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-accent-600 text-white">
-                  <CheckCircle className="w-3.5 h-3.5" weight="fill" />
-                </div>
-              ) : i === step ? (
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 border-2 border-accent-600 dark:border-accent-400">
-                  {i + 1}
-                </div>
-              ) : (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-caption font-bold transition-all bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600">
-                  {i + 1}
-                </div>
-              )}
-              <span className="text-label font-semibold hidden sm:inline">{s.label}</span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-px mx-3 ${i < step ? 'bg-accent-600' : 'bg-zinc-200 dark:bg-zinc-700'}`} />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Body */}
-      <div className="p-5">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-          >
-            {/* Step 0: Datos personales */}
-            {step === 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Nombre completo</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                    <input type="text" required placeholder="Ej. Sofia Villarreal"
-                      value={name} onChange={e => setName(e.target.value)}
-                      className="w-full text-xs p-2.5 pl-10 rounded-xl border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Carrera</label>
-                  <div className="relative">
-                    <StudentIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                    <input type="text" required placeholder="Ej. Ingeniería de Sistemas"
-                      value={career} onChange={e => setCareer(e.target.value)}
-                      className="w-full text-xs p-2.5 pl-10 rounded-xl border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-label font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">Laboratorio</label>
-                  <div className="relative">
-                    <Flask className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4 z-10" weight="regular" />
-                    <select value={lab} onChange={e => setLab(e.target.value)}
-                      className="w-full text-xs p-2.5 pl-10 rounded-xl border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all appearance-none">
-                      {LABS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                    </select>
-                  </div>
+      {/* Cuerpo: grid 8/4 */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-5 md:p-6">
+        {/* ════════ COLUMNA IZQUIERDA (8 cols) ════════ */}
+        <div className="md:col-span-8 flex flex-col gap-6">
+          {/* Card: Datos personales */}
+          <section className="bg-zinc-50/60 dark:bg-zinc-800/40 rounded-2xl p-5 md:p-6 space-y-5">
+            <h4 className="font-bold text-sm text-zinc-900 dark:text-white flex items-center gap-2">
+              <User className="w-4 h-4 text-accent-500 dark:text-accent-400" weight="fill" />
+              Información personal
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="en-first" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Nombre</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <input id="en-first" type="text" required placeholder="Ej. Sofia"
+                    value={firstName} onChange={e => setFirstName(e.target.value)}
+                    className={inputClass} />
                 </div>
               </div>
-            )}
+              <div>
+                <label htmlFor="en-last" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Apellido</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <input id="en-last" type="text" placeholder="Ej. Villarreal"
+                    value={lastName} onChange={e => setLastName(e.target.value)}
+                    className={inputClass} />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="en-doc" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">ID / Cédula</label>
+                <div className="relative">
+                  <IdentificationBadge className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <input id="en-doc" type="text" placeholder="Ej. 1723456789"
+                    value={documentId} onChange={e => setDocumentId(e.target.value)}
+                    className={inputClass} />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="en-email" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Correo</label>
+                <div className="relative">
+                  <Envelope className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <input id="en-email" type="email" placeholder="alumno@universidad.edu"
+                    value={email} onChange={e => setEmail(e.target.value)}
+                    className={inputClass} />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="en-career" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Carrera</label>
+                <div className="relative">
+                  <StudentIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <select
+                    id="en-career"
+                    required
+                    value={career}
+                    onChange={e => setCareer(e.target.value as Career)}
+                    className={`${inputClass} appearance-none pr-10 cursor-pointer`}
+                  >
+                    <option value="" disabled>Selecciona una carrera</option>
+                    {CAREERS.map(c => (
+                      <option key={c.value} value={c.value}>{c.value}</option>
+                    ))}
+                  </select>
+                  <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="bold" />
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="en-phone" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Teléfono</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <input id="en-phone" type="tel" placeholder="Ej. 0991234567"
+                    value={phone} onChange={e => setPhone(e.target.value)}
+                    className={inputClass} />
+                </div>
+              </div>
+            </div>
+          </section>
 
-            {/* Step 1: Captura biométrica */}
-            {step === 1 && (
-              <div className="space-y-4">
-                <div className="relative rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 aspect-video flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 cursor-crosshair">
-                  {useWebcam ? (
-                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover cursor-crosshair" />
-                  ) : capturedImage ? (
-                    <img src={capturedImage} alt="Captura realizada" className="w-full h-full object-cover" />
-                  ) : isCapturing ? (
-                    <div className="flex flex-col items-center gap-3 text-zinc-400">
-                      <Scan className="w-10 h-10 animate-pulse" weight="regular" />
-                      <span className="text-xs font-mono animate-pulse">Escaneando...</span>
+          {/* Card: Permisos */}
+          <section className="bg-zinc-50/60 dark:bg-zinc-800/40 rounded-2xl p-5 md:p-6 space-y-4">
+            <h4 className="font-bold text-sm text-zinc-900 dark:text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-accent-500 dark:text-accent-400" weight="fill" />
+              Permisos de laboratorio
+            </h4>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Selecciona los laboratorios a los que tendrá acceso el alumno.
+            </p>
+            <div className="space-y-3">
+              {LABS.map(lab => {
+                const active = selectedLabs.includes(lab.value);
+                return (
+                  <button
+                    key={lab.value}
+                    onClick={() => toggleLab(lab.value)}
+                    className={`w-full flex items-center gap-3 p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer group ${
+                      active
+                        ? 'bg-accent-50 dark:bg-accent-950/30 border-accent-300 dark:border-accent-700'
+                        : 'bg-white dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 hover:border-accent-300 dark:hover:border-accent-700'
+                    }`}
+                    role="switch"
+                    aria-checked={active}
+                  >
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      active ? 'bg-accent-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-400'
+                    }`}>
+                      <Flask className="w-4 h-4" weight={active ? 'fill' : 'regular'} />
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3 text-zinc-400">
-                      <CameraIcon className="w-10 h-10" weight="regular" />
-                      <span className="text-xs">Captura el rostro del alumno</span>
+                    <div className="flex-grow min-w-0">
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">{lab.label}</p>
+                      <p className="text-xs text-zinc-400 dark:text-zinc-500">{lab.desc}</p>
+                    </div>
+                    {/* Switch */}
+                    <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 shrink-0 ${
+                      active ? 'bg-accent-600' : 'bg-zinc-300 dark:bg-zinc-600'
+                    }`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                        active ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        {/* ════════ COLUMNA DERECHA (4 cols) — BIOMÉTRICA ════════ */}
+        <div className="md:col-span-4">
+          <section className="md:sticky md:top-24 bg-zinc-50/60 dark:bg-zinc-800/40 rounded-2xl p-5 md:p-6 space-y-4">
+            <h4 className="font-bold text-sm text-zinc-900 dark:text-white flex items-center gap-2">
+              <Scan className="w-4 h-4 text-accent-500 dark:text-accent-400" weight="fill" />
+              Registro biométrico
+            </h4>
+
+            {/* Viewport de captura */}
+            <div className={`relative rounded-xl overflow-hidden bg-zinc-900 aspect-[4/3] flex items-center justify-center border-2 transition-all duration-300 ${
+              captureSuccess ? 'border-green-500' :
+              isCapturing && countdown > 0 ? 'border-accent-500' :
+              capturedImage ? 'border-green-500' :
+              'border-dashed border-zinc-400/40'
+            }`}>
+              {useWebcam ? (
+                <>
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+                  {showFlash && <div className="absolute inset-0 bg-white animate-[flash_0.3s_ease-out]" />}
+                  {isCapturing && countdown > 0 && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <motion.div key={countdown} initial={{ scale: 1.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-7xl font-black text-white">
+                        {countdown}
+                      </motion.div>
                     </div>
                   )}
-                  {useWebcam && (
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-                      <button onClick={capturePhoto}
-                        className="px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer">
+                  {!isCapturing && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                      <button onClick={startCountdown}
+                        className="px-5 py-2.5 bg-accent-600 hover:bg-accent-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer shadow-lg">
                         <CameraIcon className="w-4 h-4" weight="fill" />
                         Capturar
                       </button>
                       <button onClick={stopWebcam}
-                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all active:scale-[0.98] cursor-pointer">
+                        className="px-4 py-2.5 bg-red-500/90 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all active:scale-[0.98] cursor-pointer">
                         Detener
                       </button>
                     </div>
                   )}
-                  {capturedImage && !useWebcam && (
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-                      <button onClick={() => { setCapturedImage(null); }}
-                        className="px-4 py-2 bg-zinc-700/80 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer">
-                        Repetir
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <canvas ref={canvasRef} className="hidden" />
-
-                <div className="flex justify-center gap-3">
-                  {!useWebcam && !capturedImage && !isCapturing && (
-                    <>
-                      <button onClick={startWebcam}
-                        className="px-5 py-2.5 bg-accent-600 hover:bg-accent-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer">
-                        <CameraIcon className="w-4 h-4" weight="fill" />
-                        Usar cámara web
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <p className="text-label text-zinc-400 dark:text-zinc-500 text-center">
-                  La captura se almacenará de forma segura en Amazon S3 con cifrado AES-256.
-                </p>
-
-                {webcamError && (
-                  <div className="mt-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-3 flex items-start gap-2.5">
-                    <WarningOctagon className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" weight="fill" />
-                    <div>
-                      <p className="text-caption font-semibold text-red-700 dark:text-red-400">No se pudo acceder a la cámara</p>
-                      <p className="text-label text-red-600 dark:text-red-400/80 mt-0.5">Verifica que los permisos de cámara estén habilitados en tu navegador.</p>
-                    </div>
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-black/60 backdrop-blur rounded-full">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-[10px] text-white font-mono uppercase tracking-wider">Cámara activa</span>
                   </div>
-                )}
+                </>
+              ) : capturedImage ? (
+                <div className="relative w-full h-full">
+                  <img src={capturedBlobUrl || capturedImage} alt="Captura realizada" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 hover:opacity-100 transition-opacity">
+                    <button onClick={() => { setCapturedImage(null); setCapturedBlobUrl(null); setCaptureSuccess(false); }}
+                      className="px-4 py-2.5 bg-zinc-800/90 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer">
+                      Repetir captura
+                    </button>
+                  </div>
+                  <div className="absolute top-3 right-3 w-9 h-9 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                    <CheckCircle className="w-5 h-5 text-white" weight="fill" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-zinc-400 px-4 text-center">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
+                    <CameraIcon className="w-8 h-8 text-zinc-500" weight="regular" />
+                  </div>
+                  <span className="text-xs font-medium text-zinc-300">Activa la cámara para capturar el rostro</span>
+                  <button onClick={startWebcam}
+                    className="px-5 py-3 bg-accent-600 hover:bg-accent-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all active:scale-[0.98] cursor-pointer shadow-sm">
+                    <CameraIcon className="w-4 h-4" weight="fill" />
+                    Iniciar verificación
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <canvas ref={canvasRef} className="hidden" />
+
+            {/* Stepper del registro */}
+            <div className="space-y-2.5 pt-1">
+              {bioSteps.map(step => (
+                <div key={step.id} className={`flex items-center gap-2.5 transition-opacity duration-200 ${step.done || step.active ? 'opacity-100' : 'opacity-50'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    step.done ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' :
+                    step.active ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400' :
+                    'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
+                  }`}>
+                    {step.done ? <CheckCircle className="w-3.5 h-3.5" weight="fill" /> :
+                     step.active ? <CircleNotch className="w-3.5 h-3.5 animate-spin" weight="bold" /> :
+                     <span>{bioSteps.indexOf(step) + 1}</span>}
+                  </div>
+                  <span className={`text-xs font-medium ${step.done ? 'text-green-600 dark:text-green-400' : step.active ? 'text-accent-600 dark:text-accent-400' : 'text-zinc-400 dark:text-zinc-500'}`}>
+                    {step.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {capturedImage && (
+              <div className="flex items-center gap-2 justify-center">
+                <CheckCircle className="w-4 h-4 text-green-500" weight="fill" />
+                <p className="text-xs text-green-600 dark:text-green-400 font-medium">Captura lista</p>
               </div>
             )}
 
-            {/* Step 2: Confirmación */}
-            {step === 2 && (
-              <div className="space-y-5">
-                <div className="flex items-center gap-4 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700">
-                  <div className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-200 dark:bg-zinc-700 flex-shrink-0">
-                    {capturedImage ? (
-                      <img src={capturedImage} alt="Vista previa" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-zinc-400">
-                        <User className="w-6 h-6" weight="regular" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white">{name || 'Sin nombre'}</p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{career || 'Sin carrera'}</p>
-                    <p className="text-label font-mono text-zinc-400 dark:text-zinc-500">{lab} · Umbral {matchPct}%</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {[
-                    { label: 'Nombre', value: name },
-                    { label: 'Carrera', value: career },
-                    { label: 'Laboratorio', value: lab },
-                    { label: 'Umbral mínimo', value: `${matchPct}%` },
-                    { label: 'Estado inicial', value: 'Habilitado', badge: true },
-                    { label: 'Foto capturada', value: capturedImage ? 'Sí' : 'No (usará default)' },
-                  ].map(({ label, value, badge }) => (
-                    <div key={label} className="p-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
-                      <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">{label}</p>
-                      <p className={`text-xs font-bold mt-0.5 text-zinc-900 dark:text-white ${badge ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {value || <span className="text-zinc-400">—</span>}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl">
-                  <p className="text-label text-amber-700 dark:text-amber-400 font-medium">
-                    Al confirmar, se generará un perfil biométrico seguro. El alumno podrá acceder al laboratorio inmediatamente.
-                  </p>
-                </div>
+            {webcamError && (
+              <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-3 flex items-start gap-2.5">
+                <WarningOctagon className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" weight="fill" />
+                <p className="text-xs text-red-700 dark:text-red-400 font-medium">Verifica que los permisos de cámara estén habilitados.</p>
               </div>
             )}
-          </motion.div>
-        </AnimatePresence>
+          </section>
+        </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between px-5 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
-        <button
-          onClick={step === 0 ? handleCancel : () => setStep((step - 1) as StepIndex)}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
-          {step === 0 ? 'Cancelar' : 'Anterior'}
-        </button>
-        {step < 2 ? (
-          <button
-            onClick={() => setStep((step + 1) as StepIndex)}
-            disabled={!canGoNext()}
-            className="inline-flex items-center gap-1.5 bg-accent-600 hover:bg-accent-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-semibold px-5 py-2 rounded-xl text-xs transition-all active:scale-[0.98] cursor-pointer"
-          >
-            Siguiente
-            <ArrowRight className="w-3.5 h-3.5" weight="bold" />
-          </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={registering}
-            className="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:bg-zinc-400 text-white font-semibold px-5 py-2 rounded-xl text-xs transition-all active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed"
-          >
-            {registering ? 'Registrando...' : (
-              <>
-                Confirmar y Matricular
-                <CheckCircle className="w-3.5 h-3.5" weight="bold" />
-              </>
-            )}
-          </button>
+      {/* Footer fijo */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 md:px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+        {registrationError && (
+          <div className="w-full bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-3 flex items-start gap-2.5">
+            <WarningOctagon className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" weight="fill" />
+            <p className="text-xs text-red-700 dark:text-red-400 font-medium">{registrationError}</p>
+          </div>
         )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleCancel}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-4 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={clearForm}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-4 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
+          >
+            Limpiar formulario
+          </button>
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-xl text-sm transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60"
+        >
+          {registering ? (
+            <>
+              <CircleNotch className="w-4 h-4 animate-spin" weight="bold" />
+              Registrando...
+            </>
+          ) : (
+            <>
+              Registrar estudiante
+              <ArrowRight className="w-4 h-4" weight="bold" />
+            </>
+          )}
+        </button>
       </div>
 
       <ConfirmDialog
@@ -412,4 +581,3 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     </motion.div>
   );
 }
-

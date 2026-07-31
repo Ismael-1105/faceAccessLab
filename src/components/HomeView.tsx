@@ -20,7 +20,7 @@ const FLOW_STEPS = [
   { num: 2, title: 'Gateway', subtitle: 'API segura', desc: 'AWS API Gateway canaliza la petición cifrada mediante TLS 1.3.', accent: 'from-zinc-600 to-zinc-700' },
   { num: 3, title: 'Lambda', subtitle: 'Serverless', desc: 'AWS Lambda orquesta el procesamiento de firmas faciales.', accent: 'from-zinc-600 to-zinc-700' },
   { num: 4, title: 'Rekognition', subtitle: 'IA biométrica', desc: 'Amazon Rekognition compara la biometría contra la base de datos.', accent: 'from-zinc-600 to-zinc-700' },
-  { num: 5, title: 'DynamoDB', subtitle: 'NoSQL veloz', desc: 'DynamoDB almacena registros y permisos del alumno.', accent: 'from-zinc-600 to-zinc-700' },
+  { num: 5, title: 'MongoDB', subtitle: 'NoSQL documental', desc: 'MongoDB Atlas almacena registros y permisos del alumno.', accent: 'from-zinc-600 to-zinc-700' },
   { num: 6, title: 'Acceso', subtitle: 'Relé activado', desc: 'Un token seguro activa la cerradura electromagnética del laboratorio.', accent: 'from-accent-500 to-accent-600' },
 ];
 

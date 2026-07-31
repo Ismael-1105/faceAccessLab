@@ -84,8 +84,10 @@ export const api = {
       body: JSON.stringify({ id }),
     }),
 
-  getLogs: () =>
-    request<import('../types.ts').AccessLog[]>('/logs'),
+  getLogs: async () => {
+    const logs = await request<Array<import('../types.ts').AccessLog & { _id?: string }>>('/logs');
+    return logs.map(log => ({ ...log, id: log.id || String(log._id || '') }));
+  },
 
   createLog: (log: Omit<import('../types.ts').AccessLog, '_id'>) =>
     request<import('../types.ts').AccessLog>('/logs', {
@@ -96,8 +98,10 @@ export const api = {
   getStats: () =>
     request<{ registered: number; accessesToday: number; deniedToday: number; alertsActive: number }>('/stats'),
 
-  getAlerts: () =>
-    request<import('../types.ts').Alert[]>('/alerts'),
+  getAlerts: async () => {
+    const alerts = await request<Array<import('../types.ts').Alert & { _id?: string }>>('/alerts');
+    return alerts.map(alert => ({ ...alert, id: alert.id || String(alert._id || '') }));
+  },
 
   updateAlert: (id: string, status: string) =>
     request<import('../types.ts').Alert>('/alerts', {

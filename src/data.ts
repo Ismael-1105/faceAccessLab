@@ -155,11 +155,11 @@ export const CLOUD_SERVICES: CloudService[] = [
     status: 'operational'
   },
   {
-    id: 'aws-dynamo',
-    name: 'Amazon DynamoDB',
+    id: 'mongodb-atlas',
+    name: 'MongoDB Atlas',
     iconName: 'Database',
     tag: 'STORAGE',
-    description: 'Base de datos NoSQL ultra rápida de baja latencia para almacenar plantillas faciales, credenciales académicas, permisos de acceso y logs temporales.',
+    description: 'Base de datos NoSQL documental para almacenar estudiantes, plantillas faciales, credenciales académicas, permisos de acceso y logs de auditoría.',
     actionLabel: 'Persistencia de Metadatos',
     status: 'operational'
   },
@@ -173,11 +173,11 @@ export const CLOUD_SERVICES: CloudService[] = [
     status: 'operational'
   },
   {
-    id: 'aws-cognito',
-    name: 'Amazon Cognito',
+    id: 'jwt-auth',
+    name: 'Autenticación JWT',
     iconName: 'Users',
     tag: 'IDENTITY',
-    description: 'Gestión de identidad y directorios de personal administrativo para otorgar acceso basado en roles con soporte MFA y auditoría integrada.',
+    description: 'Autenticación basada en tokens JWT firmados con bcrypt para el portal docente, con control de roles y sesiones seguras.',
     actionLabel: 'Marco de Autenticación',
     status: 'operational'
   },
@@ -237,8 +237,8 @@ export const MOCK_ALERTS: Alert[] = [
   {
     id: 'alert-5',
     severity: 'critical',
-    source: 'DynamoDB',
-    message: 'PROVISIONED_THROUGHPUT_EXCEEDED: Pico de 4500 requests/segundo en tabla face-embeddings.',
+    source: 'MongoDB Atlas',
+    message: 'CONNECTION_POOL_EXCEEDED: Pico de 4500 operaciones/segundo en colección face-embeddings.',
     timestamp: '2024-10-23T18:20:00Z',
     status: 'resolved',
   },

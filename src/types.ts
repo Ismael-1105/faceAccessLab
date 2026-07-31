@@ -3,12 +3,82 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export type Career =
+  | 'Administración de Empresas'
+  | 'Negocios Internacionales'
+  | 'Marketing'
+  | 'Psicología Clínica'
+  | 'Derecho'
+  | 'Ingeniería en Sistemas de Información'
+  | 'Arquitectura';
+
+export interface CareerInfo {
+  value: Career;
+  degree: string;
+  duration: string;
+  modality: string;
+  accreditation?: string;
+}
+
+export const CAREERS: CareerInfo[] = [
+  {
+    value: 'Administración de Empresas',
+    degree: 'Licenciatura',
+    duration: '2 años',
+    modality: 'Presencial y a distancia',
+  },
+  {
+    value: 'Negocios Internacionales',
+    degree: 'Licenciatura',
+    duration: '5 años',
+    modality: 'Presencial y a distancia',
+    accreditation: 'ACBSP · Segunda titulación 3+1',
+  },
+  {
+    value: 'Marketing',
+    degree: 'Licenciatura',
+    duration: '8 semestres',
+    modality: 'Presencial',
+  },
+  {
+    value: 'Psicología Clínica',
+    degree: 'Licenciatura',
+    duration: '8 semestres',
+    modality: 'Presencial',
+  },
+  {
+    value: 'Derecho',
+    degree: 'Abogado/a',
+    duration: '8 semestres',
+    modality: 'Presencial',
+  },
+  {
+    value: 'Ingeniería en Sistemas de Información',
+    degree: 'Ingeniero/a',
+    duration: '8 semestres',
+    modality: 'Presencial',
+  },
+  {
+    value: 'Arquitectura',
+    degree: 'Arquitecto/a',
+    duration: '9 semestres',
+    modality: 'Presencial',
+  },
+];
+
 export interface Student {
-  id: string; // ID token/number
+  id: string;
   name: string;
+  lastName?: string;
+  documentId?: string;
+  email?: string;
+  phone?: string;
   career: string;
   lab: string;
+  labs?: string[];
   photoUrl: string;
+  photoKey?: string;
+  faceEmbeddingId?: string;
   matchPercentage: number;
   status: 'allowed' | 'denied';
   avatarInitials: string;

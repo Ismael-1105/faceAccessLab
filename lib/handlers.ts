@@ -2,6 +2,8 @@ import { connectDB } from './db.ts';
 import { User, Student, AccessLog, Alert } from './models.ts';
 import { hashPassword, comparePassword, generateToken, verifyToken, getTokenFromRequest } from './auth.ts';
 import { v4 as uuidv4 } from 'uuid';
+import { deleteImage } from './s3.ts';
+import { deleteFace } from './rekognition.ts';
 
 export async function handleLogin(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
@@ -158,6 +160,38 @@ export async function handleToggleStudent(req: Request): Promise<Response> {
   return jsonResponse(student);
 }
 
+export async function handleDeleteStudent(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await authenticate(req);
+  } catch {
+    return errorResponse('No autorizado', 401);
+  }
+
+  await connectDB();
+  const { id } = await req.json() as { id: string };
+
+  if (!id) {
+    return errorResponse('ID del estudiante requerido', 400);
+  }
+
+  const student = await Student.findOne({ id });
+  if (!student) {
+    return errorResponse('Estudiante no encontrado', 404);
+  }
+
+  if (student.photoKey) {
+    try { await deleteImage(student.photoKey); } catch {}
+  }
+
+  if (student.faceEmbeddingId) {
+    try { await deleteFace(student.faceEmbeddingId); } catch {}
+  }
+
+  await Student.deleteOne({ id });
+  return jsonResponse({ ok: true, message: 'Estudiante eliminado' });
+}
+
 export async function handleGetLogs(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   try {
@@ -266,11 +300,43 @@ export async function handleGetStudentsPublic(_req?: Request): Promise<Response>
 
 export async function handleCreateLogPublic(req: Request): Promise<Response> {
   const { jsonResponse } = await import('./auth.ts');
+  const { Metrics } = await import('./cloudwatch.ts');
+  const { publishAlert } = await import('./sns.ts');
+
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
   const log = await AccessLog.create({
     ...body,
     id: (body.id as string) || `log-${uuidv4().slice(0, 9)}`,
   });
+
+  if (log.result === 'Permitido') {
+    Metrics.accessGranted();
+  } else {
+    Metrics.accessDenied();
+
+    const recentDenials = await AccessLog.countDocuments({
+      result: 'Denegado',
+      similarity: { $lt: 99 },
+      createdAt: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
+    });
+
+    if (recentDenials >= 3) {
+      await publishAlert(
+        'ALERTA: Accesos denegados repetidos',
+        `Se detectaron ${recentDenials} intentos de acceso denegado en los últimos 10 minutos.\nKiosco: ${log.kioskId || 'Kiosk-042'}\nHora: ${log.time} ${log.date}`
+      );
+
+      await Alert.create({
+        id: `alert-${uuidv4().slice(0, 8)}`,
+        severity: 'critical',
+        source: 'Kiosk',
+        message: `ALERTA_ACCESOS_DENEGADOS: ${recentDenials} intentos fallidos en los últimos 10 minutos.`,
+        timestamp: new Date().toISOString(),
+        status: 'active',
+      });
+    }
+  }
+
   return jsonResponse(log, 201);
 }

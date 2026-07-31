@@ -27,32 +27,43 @@ const iconMapping: Record<string, React.ComponentType<{ className?: string; weig
 
 const CATEGORIES = [
   { id: 'vision', label: 'Visión', icon: Cpu, services: ['aws-rekognition', 'aws-liveness'] },
-  { id: 'compute', label: 'Procesamiento', icon: Cpu, services: ['aws-lambda', 'aws-api', 'aws-dynamo'] },
-  { id: 'infra', label: 'Infraestructura', icon: Database, services: ['aws-s3', 'aws-cognito', 'aws-sns', 'aws-cloudwatch'] },
+  { id: 'compute', label: 'Procesamiento', icon: Cpu, services: ['aws-lambda', 'aws-api', 'mongodb-atlas'] },
+  { id: 'infra', label: 'Infraestructura', icon: Database, services: ['aws-s3', 'jwt-auth', 'aws-sns', 'aws-cloudwatch'] },
 ];
 
 export default function ArchitectureView() {
   const [selectedService, setSelectedService] = useState<CloudService>(CLOUD_SERVICES[0]);
   const [activeCategory, setActiveCategory] = useState('vision');
+  const [liveMetrics, setLiveMetrics] = useState<Record<string, number> | null>(null);
+
+  React.useEffect(() => {
+    fetch('/api/metrics')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) setLiveMetrics(data.metrics);
+      })
+      .catch(() => {});
+  }, []);
 
   const getTelemetryStats = (id: string) => {
+    const m = liveMetrics || {};
     switch (id) {
       case 'aws-rekognition':
         return [
-          { name: 'Latencia Promedio', val: '228 ms', status: 'Excelente' },
-          { name: 'Confianza Promedio', val: '99.2%', status: 'Fiel' },
-          { name: 'Validaciones/Dia', val: '1,420 c', status: 'Estable' }
+          { name: 'Latencia Promedio', val: m.rekognition_latency_ms ? `${m.rekognition_latency_ms} ms` : '228 ms', status: 'Excelente' },
+          { name: 'Búsquedas (24h)', val: m.faces_searched ? `${m.faces_searched}` : '1,420', status: 'Fiel' },
+          { name: 'Accesos Concedidos', val: m.access_granted ? `${m.access_granted}` : '—', status: 'Estable' }
         ];
       case 'aws-liveness':
         return [
-          { name: 'Tasa Spoof', val: '0.04%', status: 'Optima' },
-          { name: 'Tiempo Eval.', val: '140 ms', status: 'Excelente' },
+          { name: 'Liveness OK', val: m.liveness_checked ? `${m.liveness_checked}` : '—', status: 'Optima' },
+          { name: 'Liveness Fallido', val: m.liveness_failed ? `${m.liveness_failed}` : '0', status: 'Preciso' },
           { name: 'Falso Positivo', val: '< 0.001%', status: 'Preciso' }
         ];
       case 'aws-lambda':
         return [
-          { name: 'Invocaciones Hoy', val: '4,103', status: 'Escalando' },
-          { name: 'Duracion Est.', val: '45 ms', status: 'Ligero' },
+          { name: 'Rostros Indexados', val: m.faces_indexed ? `${m.faces_indexed}` : '—', status: 'Escalando' },
+          { name: 'Accesos Negados', val: m.access_denied ? `${m.access_denied}` : '—', status: 'Ligero' },
           { name: 'Tasa Errores', val: '0.00%', status: 'Perfecto' }
         ];
       case 'aws-api':
@@ -61,11 +72,35 @@ export default function ArchitectureView() {
           { name: 'Cache Hit', val: '86%', status: 'Rapido' },
           { name: 'SSL/TLS', val: '1.3', status: 'Cifrado' }
         ];
-      case 'aws-dynamo':
+      case 'mongodb-atlas':
         return [
-          { name: 'Escrituras/Seg', val: '14 WCU', status: 'Listo' },
-          { name: 'Lecturas/Seg', val: '112 RCU', status: 'Listo' },
+          { name: 'Operaciones/Seg', val: '14 OPS', status: 'Listo' },
+          { name: 'Lecturas/Seg', val: '112 QPS', status: 'Listo' },
           { name: 'Respuesta', val: '6 ms', status: 'Ultra-Bajo' }
+        ];
+      case 'aws-s3':
+        return [
+          { name: 'Objetos', val: m.faces_indexed ? `${m.faces_indexed}` : '—', status: 'Listo' },
+          { name: 'Estado', val: 'Disponible', status: 'Sano' },
+          { name: 'Encriptación', val: 'AES-256', status: 'Cifrado' }
+        ];
+      case 'jwt-auth':
+        return [
+          { name: 'Tokens Activos', val: '—', status: 'Activo' },
+          { name: 'Roles', val: '2', status: 'Listo' },
+          { name: 'Algoritmo', val: 'HS256', status: 'Seguro' }
+        ];
+      case 'aws-sns':
+        return [
+          { name: 'Alertas Enviadas', val: m.access_denied && m.access_denied > 3 ? `${Math.floor(m.access_denied / 3)}` : '0', status: 'Listo' },
+          { name: 'Topic', val: 'alerts', status: 'Activo' },
+          { name: 'Suscritos', val: '1', status: 'Sano' }
+        ];
+      case 'aws-cloudwatch':
+        return [
+          { name: 'Métricas', val: Object.keys(m).length ? `${Object.keys(m).length}` : '7', status: 'Activo' },
+          { name: 'Namespace', val: 'FaceAccessLab', status: 'Sano' },
+          { name: 'Ventana', val: '24h', status: 'Eficiente' }
         ];
       default:
         return [
@@ -208,7 +243,13 @@ export default function ArchitectureView() {
                 </div>
 
                 <div className="mt-8 border-t border-zinc-800/70 pt-6">
-                  <span className="text-micro font-mono tracking-wider text-zinc-400 block font-bold uppercase mb-3">Telemetria (CloudWatch)</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-micro font-mono tracking-wider text-zinc-400 block font-bold uppercase">Telemetria (CloudWatch)</span>
+                    <span className={`inline-flex items-center gap-1.5 text-micro font-mono font-bold uppercase tracking-wider ${liveMetrics ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${liveMetrics ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+                      {liveMetrics ? 'En vivo' : 'Demo'}
+                    </span>
+                  </div>
                   <div className="space-y-2.5">
                     {getTelemetryStats(selectedService.id).map((t, i) => (
                       <div key={i} className="flex justify-between items-center p-2.5 bg-black/40 border border-zinc-800/50 rounded-xl text-xs font-mono">

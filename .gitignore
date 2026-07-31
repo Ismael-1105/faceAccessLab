@@ -18,6 +18,3 @@ Thumbs.db
 .vscode/
 .vercel
 .aistudio/
-
-public/images/students/
-!public/images/students/.gitkeep

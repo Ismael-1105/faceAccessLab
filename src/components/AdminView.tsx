@@ -12,6 +12,7 @@ import {
   ChartBar, GearSix
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
+import { api, getToken } from '../lib/api.ts';
 import EnrollmentView from './EnrollmentView.tsx';
 import StudentDetailView from './StudentDetailView.tsx';
 import AlertsCenter from './AlertsCenter.tsx';
@@ -128,15 +129,6 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" aria-hidden="true" />
             <span className="text-label text-zinc-400 dark:text-zinc-500 font-medium">Kiosk-042 en línea</span>
           </div>
-          <div className="flex gap-2 px-1">
-            <Link href="/docente/demo" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
-              Demo
-            </Link>
-            <span className="text-zinc-300 dark:text-zinc-600">·</span>
-            <Link href="/docente/arquitectura" className="text-label text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-colors font-medium">
-              Arquitectura
-            </Link>
-          </div>
         </div>
 
         <button
@@ -192,8 +184,8 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                     { day: 'Vie', count: 128, pct: '100%' },
                     { day: 'Sab', count: 78, pct: '61%' },
                     { day: 'Dom', count: 50, pct: '39%' }
-                  ].map((bar, i) => (
-                    <div key={i} className="flex flex-col items-center flex-1 group">
+                  ].map((bar) => (
+                    <div key={bar.day} className="flex flex-col items-center flex-1 group">
                       <div className="relative w-full flex justify-center">
                         <div className="absolute -top-7 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded-lg transition-transform">
                           {bar.count}
@@ -280,20 +272,17 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
         {/* ========== STUDENTS ========== */}
         {activeTab === 'students' && (
           <div className="space-y-6">
-            {selectedStudentId ? (
+            {showEnrollment ? (
+              <div className="pt-16 min-h-screen bg-surface dark:bg-zinc-950 px-4 md:px-8 pb-8 flex justify-center">
+                <EnrollmentView
+                  onComplete={(student) => { handleAddStudent(student); setShowEnrollment(false); }}
+                  onCancel={() => setShowEnrollment(false)}
+                />
+              </div>
+            ) : selectedStudentId ? (
               (() => {
                 const student = students.find(s => s.id === selectedStudentId);
                 if (!student) return null;
-  if (showEnrollment) {
-    return (
-      <div className="pt-16 min-h-screen bg-surface dark:bg-zinc-950">
-        <EnrollmentView
-          onComplete={(student) => { handleAddStudent(student); setShowEnrollment(false); }}
-          onCancel={() => setShowEnrollment(false)}
-        />
-      </div>
-    );
-  }
 
   return (
                   <StudentDetailView
@@ -301,6 +290,19 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                     logs={logs}
                     onToggleStatus={handleToggleStudent}
                     onBack={() => setSelectedStudentId(null)}
+                    onDelete={async (id) => {
+                      try {
+                        await fetch('/api/students', {
+                          method: 'DELETE',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${getToken()}`,
+                          },
+                          body: JSON.stringify({ id }),
+                        });
+                        setSelectedStudentId(null);
+                      } catch {}
+                    }}
                   />
                 );
               })()
@@ -496,7 +498,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm space-y-5">
                 <h4 className="font-bold text-sm text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-2">Parametros del Sensor</h4>
                 {[
-                  { label: 'Umbral de Similitud Minimo', value: '90.0%', min: '75', max: '99', default: '90', desc: 'Limite matematico en Amazon Rekognition para decretar match.' },
+                  { label: 'Umbral de Similitud Minimo', value: '85.0%', min: '75', max: '99', default: '85', desc: 'Limite matematico en Amazon Rekognition para decretar match.' },
                   { label: 'Tolerancia Micro-Parpadeo', value: 'Alta', min: '1', max: '3', default: '2', desc: 'Sensibilidad al evaluar vivacidad contra fotos estaticas.' },
                   { label: 'Tiempo de Apertura', value: '10 Segundos', min: '3', max: '30', default: '10', desc: 'Lapso que la bobina electromagnetica permanece energizada.' },
                 ].map(({ label, value, min, max, default: def, desc }) => (

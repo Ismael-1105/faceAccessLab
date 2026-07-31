@@ -10,10 +10,17 @@ export interface IUser extends Document {
 }
 
 export interface IStudent extends Document {
+  id: string;
   name: string;
+  lastName?: string;
+  documentId?: string;
+  email?: string;
+  phone?: string;
   career: string;
   lab: string;
+  labs?: string[];
   photoUrl: string;
+  photoKey?: string;
   matchPercentage: number;
   status: 'allowed' | 'denied';
   avatarInitials: string;
@@ -52,16 +59,23 @@ const UserSchema = new Schema<IUser>({
 });
 
 const StudentSchema = new Schema<IStudent>({
+  id: { type: String, required: true, unique: true },
   name: { type: String, required: true },
+  lastName: { type: String },
+  documentId: { type: String },
+  email: { type: String },
+  phone: { type: String },
   career: { type: String, required: true },
   lab: { type: String, required: true },
+  labs: { type: [String], default: undefined },
   photoUrl: { type: String, default: '/images/default-avatar.jpg' },
+  photoKey: { type: String },
   matchPercentage: { type: Number, default: 0 },
   status: { type: String, enum: ['allowed', 'denied'], default: 'allowed' },
   avatarInitials: { type: String, required: true },
   faceEmbeddingId: { type: String },
   createdAt: { type: Date, default: Date.now },
-});
+}, { id: false });
 
 const AccessLogSchema = new Schema<IAccessLog>({
   studentId: { type: String, required: true },
