@@ -103,7 +103,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (user && user.role === 'docente') {
+    if (user && (user.role === 'docente' || user.role === 'admin')) {
       Promise.all([
         api.getStudents().catch(() => null),
         api.getLogs().catch(() => null),

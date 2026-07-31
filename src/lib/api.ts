@@ -63,6 +63,27 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  getUsers: () =>
+    request<import('../types.ts').AdminUser[]>('/users'),
+
+  createUser: (data: { email: string; password: string; name: string }) =>
+    request<{ user: import('../types.ts').AdminUser }>('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateUser: (id: string, updates: { email?: string; password?: string; name?: string }) =>
+    request<{ user: import('../types.ts').AdminUser }>('/users', {
+      method: 'PUT',
+      body: JSON.stringify({ id, ...updates }),
+    }),
+
+  deleteUser: (id: string) =>
+    request<{ ok: boolean; message: string }>('/users', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    }),
+
   getStudents: () =>
     request<import('../types.ts').Student[]>('/students'),
 

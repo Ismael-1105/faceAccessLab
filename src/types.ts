@@ -107,7 +107,7 @@ export interface CloudService {
 
 export type AppView = 'home' | 'demo' | 'admin' | 'architecture';
 
-export type UserRole = 'docente' | 'estudiante';
+export type UserRole = 'admin' | 'docente' | 'estudiante';
 
 export interface AuthUser {
   id: string;
@@ -116,6 +116,14 @@ export interface AuthUser {
   name: string;
   role: UserRole;
   studentId?: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: 'docente';
+  createdAt: string;
 }
 
 export interface Alert {

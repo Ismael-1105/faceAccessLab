@@ -11,11 +11,11 @@ async function seedDatabase() {
   const adminHash = await hashPassword('admin123');
 
   await User.insertMany([
+    { email: 'admin@faceaccess.lab', passwordHash: adminHash, name: 'Nicolás Cevallos', role: 'admin', createdAt: new Date() },
     { email: 'docente@faceaccess.lab', passwordHash: docenteHash, name: 'Ismael González', role: 'docente', createdAt: new Date() },
-    { email: 'admin@faceaccess.lab', passwordHash: adminHash, name: 'Nicolás Cevallos', role: 'docente', createdAt: new Date() },
   ]);
 
-  return 'Database seeded: 2 docente users';
+  return 'Database seeded: 1 admin + 1 docente';
 }
 
 export async function GET() {

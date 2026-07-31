@@ -30,7 +30,7 @@ export default function LoginView() {
         email: result.user.email,
         password: '',
         name: result.user.name,
-        role: result.user.role as 'docente' | 'estudiante',
+        role: result.user.role as 'admin' | 'docente' | 'estudiante',
         studentId: result.user.studentId,
       });
       router.push('/docente');

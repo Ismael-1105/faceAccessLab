@@ -22,11 +22,11 @@ async function seed() {
   const adminHash = await hashPassword('admin123');
 
   await User.insertMany([
+    { email: 'admin@faceaccess.lab', passwordHash: adminHash, name: 'Nicolás Cevallos', role: 'admin', createdAt: new Date() },
     { email: 'docente@faceaccess.lab', passwordHash: docenteHash, name: 'Ismael González', role: 'docente', createdAt: new Date() },
-    { email: 'admin@faceaccess.lab', passwordHash: adminHash, name: 'Nicolás Cevallos', role: 'docente', createdAt: new Date() },
   ]);
 
-  console.log('[Seed] 2 docente users created.');
+  console.log('[Seed] 1 admin + 1 docente created.');
   console.log('[Seed] Done!');
   process.exit(0);
 }

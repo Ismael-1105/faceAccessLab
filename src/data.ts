@@ -214,7 +214,7 @@ export const MOCK_AUTH_USERS: AuthUser[] = [
     email: 'admin@faceaccess.lab',
     password: 'admin123',
     name: 'Ing. Alejandro Morales',
-    role: 'docente',
+    role: 'admin',
   },
   {
     id: 'stu-1',

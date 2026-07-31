@@ -7,7 +7,7 @@ const JWT_EXPIRES_IN = '24h';
 export interface TokenPayload {
   userId: string;
   email: string;
-  role: 'docente' | 'estudiante';
+  role: 'admin' | 'docente' | 'estudiante';
   studentId?: string;
 }
 

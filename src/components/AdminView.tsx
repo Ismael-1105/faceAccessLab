@@ -9,7 +9,7 @@ import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, SlidersHorizontal, SignOut,
-  ChartBar, GearSix, CaretLeft, CaretRight
+  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import { api, getToken } from '../lib/api.ts';
@@ -18,6 +18,7 @@ import StudentDetailView from './StudentDetailView.tsx';
 import AlertsCenter from './AlertsCenter.tsx';
 import ReportsView from './ReportsView.tsx';
 import EmptyState from './EmptyState.tsx';
+import UsersView from './UsersView.tsx';
 
 export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'arquitectura' } = {}) {
   const {
@@ -28,7 +29,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   } = useApp();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'reports' | 'config'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'All' | 'Permitido' | 'Denegado'>('All');
   const [logPage, setLogPage] = useState(0);
@@ -113,12 +114,14 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config';
+  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'reports' | 'config';
+  const isAdmin = user?.role === 'admin';
   const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
     { tab: 'overview', icon: Heartbeat, label: 'Vista General' },
     { tab: 'students', icon: Users, label: `Alumnos (${students.length})` },
     { tab: 'logs', icon: SlidersHorizontal, label: `Historial (${logs.length})` },
     { tab: 'alerts', icon: ShieldWarning, label: `Alertas (${alerts.filter(a => a.status === 'active').length})` },
+    ...(isAdmin ? [{ tab: 'users' as const, icon: UserCheck, label: 'Docentes' }] : []),
   ];
 
   return (
@@ -156,18 +159,20 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             </button>
           ))}
 
-          {/* Calibración: en desktop va separada con divider */}
-          <button
-            onClick={() => setActiveTab('config')}
-            className={`w-full shrink-0 md:shrink py-2 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer md:mt-4 md:pt-4 md:border-t md:border-zinc-100 md:dark:border-zinc-800 ${
-              activeTab === 'config'
-                ? 'bg-accent-600 text-white shadow-sm'
-                : 'text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300'
-            }`}
-          >
-            <GearSix className="w-4 h-4 flex-shrink-0" weight={activeTab === 'config' ? 'fill' : 'regular'} />
-            Calibración
-          </button>
+          {/* Calibración: en desktop va separada con divider — solo admin */}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('config')}
+              className={`w-full shrink-0 md:shrink py-2 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer md:mt-4 md:pt-4 md:border-t md:border-zinc-100 md:dark:border-zinc-800 ${
+                activeTab === 'config'
+                  ? 'bg-accent-600 text-white shadow-sm'
+                  : 'text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300'
+              }`}
+            >
+              <GearSix className="w-4 h-4 flex-shrink-0" weight={activeTab === 'config' ? 'fill' : 'regular'} />
+              Calibración
+            </button>
+          )}
         </nav>
 
         {/* Status — solo en desktop */}
@@ -564,13 +569,18 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
           />
         )}
 
+        {/* ========== USERS (DOCENTES) ========== */}
+        {activeTab === 'users' && isAdmin && (
+          <UsersView />
+        )}
+
         {/* ========== REPORTS ========== */}
         {activeTab === 'reports' && (
           <ReportsView logs={logs} />
         )}
 
-        {/* ========== CONFIG ========== */}
-        {activeTab === 'config' && (
+        {/* ========== CONFIG — solo admin ========== */}
+        {activeTab === 'config' && isAdmin && (
           <div className="space-y-6">
             <div>
               <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Calibración y Umbrales</h3>

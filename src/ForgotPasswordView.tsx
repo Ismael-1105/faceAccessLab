@@ -17,7 +17,7 @@ export default function ForgotPasswordView() {
     setError('');
 
     const exists = MOCK_AUTH_USERS.find(
-      u => u.email === email && u.role === 'docente'
+      u => u.email === email && (u.role === 'admin' || u.role === 'docente')
     );
 
     if (exists) {

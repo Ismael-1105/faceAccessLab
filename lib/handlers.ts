@@ -45,6 +45,12 @@ export async function handleLogin(req: Request): Promise<Response> {
 
 export async function handleRegister(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
   await connectDB();
 
   const { email, password, name, role } = await req.json() as {
@@ -77,10 +83,137 @@ export async function handleRegister(req: Request): Promise<Response> {
   }, 201);
 }
 
+export async function handleGetUsers(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const users = await User.find({ role: 'docente' }).sort({ createdAt: -1 });
+  const safe = users.map(u => ({
+    id: u._id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    studentId: u.studentId,
+    createdAt: u.createdAt,
+  }));
+  return jsonResponse(safe);
+}
+
+export async function handleCreateUser(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  const { email, password, name } = await req.json() as {
+    email?: string; password?: string; name?: string;
+  };
+
+  if (!email || !password || !name) {
+    return errorResponse('Email, contraseña y nombre son requeridos', 400);
+  }
+
+  const existing = await User.findOne({ email: email.toLowerCase() });
+  if (existing) {
+    return errorResponse('El email ya está registrado', 409);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const user = await User.create({ email: email.toLowerCase(), passwordHash, name, role: 'docente' });
+
+  return jsonResponse({
+    user: {
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+    },
+  }, 201);
+}
+
+export async function handleUpdateUser(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const { id, email, password, name } = await req.json() as {
+    id?: string; email?: string; password?: string; name?: string;
+  };
+
+  if (!id) {
+    return errorResponse('ID del docente requerido', 400);
+  }
+
+  const updates: { email?: string; name?: string; passwordHash?: string } = {};
+  if (email && typeof email === 'string') updates.email = email.toLowerCase();
+  if (name && typeof name === 'string') updates.name = name;
+  if (password && typeof password === 'string') updates.passwordHash = await hashPassword(password);
+
+  if (Object.keys(updates).length === 0) {
+    return errorResponse('No hay cambios para aplicar', 400);
+  }
+
+  const user = await User.findOneAndUpdate({ _id: id }, { $set: updates }, { new: true });
+  if (!user) {
+    return errorResponse('Docente no encontrado', 404);
+  }
+
+  return jsonResponse({
+    user: {
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+    },
+  });
+}
+
+export async function handleDeleteUser(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const { id } = await req.json() as { id?: string };
+
+  if (!id) {
+    return errorResponse('ID del docente requerido', 400);
+  }
+
+  const deleted = await User.findOneAndDelete({ _id: id, role: 'docente' });
+  if (!deleted) {
+    return errorResponse('Docente no encontrado', 404);
+  }
+
+  return jsonResponse({ ok: true, message: 'Docente eliminado' });
+}
+
 async function authenticate(req: Request) {
   const token = getTokenFromRequest(req);
   if (!token) throw new Error('No autorizado');
   return verifyToken(token);
+}
+
+async function requireAdmin(req: Request) {
+  const payload = await authenticate(req);
+  if (payload.role !== 'admin') throw new Error('Acceso restringido a administradores');
+  return payload;
 }
 
 export async function handleGetStudents(req: Request): Promise<Response> {
