@@ -301,7 +301,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                           body: JSON.stringify({ id }),
                         });
                         setSelectedStudentId(null);
-                      } catch {}
+                      } catch (e) { console.error('[Admin] Error al eliminar estudiante:', e); }
                     }}
                   />
                 );

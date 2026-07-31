@@ -181,11 +181,11 @@ export async function handleDeleteStudent(req: Request): Promise<Response> {
   }
 
   if (student.photoKey) {
-    try { await deleteImage(student.photoKey); } catch {}
+    try { await deleteImage(student.photoKey); } catch (e) { console.error('[Delete] Error al eliminar imagen:', e); }
   }
 
   if (student.faceEmbeddingId) {
-    try { await deleteFace(student.faceEmbeddingId); } catch {}
+    try { await deleteFace(student.faceEmbeddingId); } catch (e) { console.error('[Delete] Error al eliminar rostro:', e); }
   }
 
   await Student.deleteOne({ id });

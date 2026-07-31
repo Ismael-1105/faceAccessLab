@@ -51,7 +51,7 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
   const [isRequesting, setIsRequesting] = React.useState(false);
   const hasAutoRequested = React.useRef(false);
 
-  const handleRequest = async () => {
+  const handleRequest = React.useCallback(async () => {
     if (isRequesting) return;
     setIsRequesting(true);
     try {
@@ -64,13 +64,18 @@ export default function CameraPermissionGate({ onProceed, onCancel }: CameraPerm
     } finally {
       setIsRequesting(false);
     }
-  };
+  }, [isRequesting, requestPermission, onProceed]);
+
+  const handleRequestRef = React.useRef(handleRequest);
+  React.useEffect(() => {
+    handleRequestRef.current = handleRequest;
+  }, [handleRequest]);
 
   React.useEffect(() => {
     if (hasAutoRequested.current) return;
     hasAutoRequested.current = true;
     const timer = setTimeout(() => {
-      handleRequest();
+      handleRequestRef.current();
     }, 200);
     return () => clearTimeout(timer);
   }, []);

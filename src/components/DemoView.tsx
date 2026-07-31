@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Camera, FilmSlate, ArrowsClockwise, XCircle, CheckCircle,
@@ -31,16 +31,27 @@ export default function DemoView() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const selectedStudentRef = useRef(selectedStudent);
+  const simulatedMatchPctRef = useRef(simulatedMatchPct);
+  const handleAddLogRef = useRef(handleAddLog);
+  const handleIncrementStatsRef = useRef(handleIncrementStats);
 
-  const stopWebcam = () => {
+  useEffect(() => {
+    selectedStudentRef.current = selectedStudent;
+    simulatedMatchPctRef.current = simulatedMatchPct;
+    handleAddLogRef.current = handleAddLog;
+    handleIncrementStatsRef.current = handleIncrementStats;
+  }, [selectedStudent, simulatedMatchPct, handleAddLog, handleIncrementStats]);
+
+  const stopWebcam = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     setWebcamActive(false);
-  };
+  }, []);
 
-  const startWebcam = async () => {
+  const startWebcam = useCallback(async () => {
     try {
       stopWebcam();
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -55,7 +66,18 @@ export default function DemoView() {
       setUseWebcam(false);
       setWebcamActive(false);
     }
-  };
+  }, [stopWebcam]);
+
+  const setSelectedFlowPoints = useCallback(() => {
+    if (selectedStudent) {
+      if (selectedStudent.status === 'denied') {
+        setSimulatedMatchPct(22.8);
+      } else {
+        const dev = parseFloat((Math.random() * 0.9).toFixed(1));
+        setSimulatedMatchPct(parseFloat((selectedStudent.matchPercentage - dev).toFixed(1)));
+      }
+    }
+  }, [selectedStudent]);
 
   useEffect(() => {
     if (useWebcam && flowState === 'scanning') {
@@ -64,7 +86,7 @@ export default function DemoView() {
       stopWebcam();
     }
     return () => { stopWebcam(); };
-  }, [useWebcam, flowState]);
+  }, [useWebcam, flowState, startWebcam, stopWebcam]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -90,22 +112,22 @@ export default function DemoView() {
             const m = pad(now.getMinutes());
             const s = pad(now.getSeconds());
 
-            const isAllowed = selectedStudent.status === 'allowed';
-            const similarityScore = isAllowed ? simulatedMatchPct : 22.8;
+            const isAllowed = selectedStudentRef.current.status === 'allowed';
+            const similarityScore = isAllowed ? simulatedMatchPctRef.current : 22.8;
 
             const newLog: AccessLog = {
               id: 'log-' + Math.random().toString(36).substr(2, 9),
-              studentId: selectedStudent.id,
-              studentName: isAllowed ? selectedStudent.name : 'Persona Desconocida',
-              avatarInitials: selectedStudent.avatarInitials,
+              studentId: selectedStudentRef.current.id,
+              studentName: isAllowed ? selectedStudentRef.current.name : 'Persona Desconocida',
+              avatarInitials: selectedStudentRef.current.avatarInitials,
               date: 'Oct 24, 2024',
               time: `${h}:${m}:${s}`,
               result: isAllowed ? 'Permitido' : 'Denegado',
               similarity: parseFloat(similarityScore.toFixed(1))
             };
 
-            handleAddLog(newLog);
-            handleIncrementStats(isAllowed);
+            handleAddLogRef.current(newLog);
+            handleIncrementStatsRef.current(isAllowed);
             stopWebcam();
             return 100;
           }
@@ -118,18 +140,7 @@ export default function DemoView() {
       return () => clearInterval(interval);
     }
     return () => clearTimeout(timer);
-  }, [flowState]);
-
-  const setSelectedFlowPoints = () => {
-    if (selectedStudent) {
-      if (selectedStudent.status === 'denied') {
-        setSimulatedMatchPct(22.8);
-      } else {
-        const dev = parseFloat((Math.random() * 0.9).toFixed(1));
-        setSimulatedMatchPct(parseFloat((selectedStudent.matchPercentage - dev).toFixed(1)));
-      }
-    }
-  };
+  }, [flowState, setSelectedFlowPoints, stopWebcam]);
 
   useEffect(() => {
     let countdownTimer: ReturnType<typeof setTimeout>;

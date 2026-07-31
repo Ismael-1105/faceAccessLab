@@ -148,7 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLogs(prev => [newLog, ...prev]);
     try {
       await api.createLogPublic(newLog);
-    } catch {}
+    } catch (e) { console.error('[Log] Error al guardar acceso:', e); }
   };
 
   const handleIncrementStats = (isAllowed: boolean) => {

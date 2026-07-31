@@ -58,7 +58,15 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
 
   const [webcamActive, setWebcamActive] = useState(false);
 
-  const startWebcam = async () => {
+  const stopWebcam = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setWebcamActive(false);
+  }, []);
+
+  const startWebcam = useCallback(async () => {
     try {
       stopWebcam();
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -72,15 +80,7 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
     } catch {
       setWebcamActive(false);
     }
-  };
-
-  const stopWebcam = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setWebcamActive(false);
-  };
+  }, [stopWebcam]);
 
   useEffect(() => {
     if (hasCameraPermission && (flowState === 'scanning' || flowState === 'idle')) {
@@ -88,12 +88,12 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
     } else if (flowState === 'result') {
       stopWebcam();
     }
-  }, [hasCameraPermission, flowState]);
+  }, [hasCameraPermission, flowState, startWebcam, stopWebcam]);
 
   useEffect(() => {
     stopWebcam();
     return () => { stopWebcam(); };
-  }, []);
+  }, [stopWebcam]);
 
   const scanResultRef = useRef<boolean>(false);
 
@@ -172,7 +172,7 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
         setTimeout(() => setActiveView('profile'), 2500);
       }
     }
-  }, [students, webcamActive, onAddLog, incrementStats]);
+  }, [students, webcamActive, onAddLog, incrementStats, simulatedMatchPct]);
 
   const handleCancelAutoScan = () => {
     if (countdownTimerRef.current) {
@@ -232,7 +232,7 @@ export default function StudentView({ students, logs, onAddLog, incrementStats, 
       }, 2200);
       return () => clearTimeout(timer);
     }
-  }, [flowState]);
+  }, [flowState, scannedStudent]);
 
   useEffect(() => {
     if (flowState !== 'processing' || scanResultRef.current) return;
