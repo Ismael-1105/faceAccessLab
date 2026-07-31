@@ -126,6 +126,15 @@ export interface AdminUser {
   createdAt: string;
 }
 
+export interface Lab {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface Alert {
   id: string;
   severity: 'critical' | 'warning' | 'info';

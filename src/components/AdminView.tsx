@@ -9,7 +9,7 @@ import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, SlidersHorizontal, SignOut,
-  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck
+  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck, Flask
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import { api, getToken } from '../lib/api.ts';
@@ -19,6 +19,7 @@ import AlertsCenter from './AlertsCenter.tsx';
 import ReportsView from './ReportsView.tsx';
 import EmptyState from './EmptyState.tsx';
 import UsersView from './UsersView.tsx';
+import LabsView from './LabsView.tsx';
 
 export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'arquitectura' } = {}) {
   const {
@@ -29,7 +30,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   } = useApp();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'reports' | 'config'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'reports' | 'config'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'All' | 'Permitido' | 'Denegado'>('All');
   const [logPage, setLogPage] = useState(0);
@@ -114,14 +115,17 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'reports' | 'config';
+  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'reports' | 'config';
   const isAdmin = user?.role === 'admin';
   const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
     { tab: 'overview', icon: Heartbeat, label: 'Vista General' },
     { tab: 'students', icon: Users, label: `Alumnos (${students.length})` },
     { tab: 'logs', icon: SlidersHorizontal, label: `Historial (${logs.length})` },
     { tab: 'alerts', icon: ShieldWarning, label: `Alertas (${alerts.filter(a => a.status === 'active').length})` },
-    ...(isAdmin ? [{ tab: 'users' as const, icon: UserCheck, label: 'Docentes' }] : []),
+    ...(isAdmin ? [
+      { tab: 'users' as const, icon: UserCheck, label: 'Docentes' },
+      { tab: 'labs' as const, icon: Flask, label: 'Laboratorios' },
+    ] : []),
   ];
 
   return (
@@ -572,6 +576,10 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
         {/* ========== USERS (DOCENTES) ========== */}
         {activeTab === 'users' && isAdmin && (
           <UsersView />
+        )}
+
+        {activeTab === 'labs' && isAdmin && (
+          <LabsView />
         )}
 
         {/* ========== REPORTS ========== */}

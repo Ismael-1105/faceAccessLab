@@ -84,6 +84,27 @@ export const api = {
       body: JSON.stringify({ id }),
     }),
 
+  getLabs: () =>
+    request<import('../types.ts').Lab[]>('/labs'),
+
+  createLab: (data: { name: string; code: string; description?: string; active?: boolean }) =>
+    request<{ lab: import('../types.ts').Lab }>('/labs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateLab: (id: string, updates: { name?: string; code?: string; description?: string; active?: boolean }) =>
+    request<{ lab: import('../types.ts').Lab }>('/labs', {
+      method: 'PUT',
+      body: JSON.stringify({ id, ...updates }),
+    }),
+
+  deleteLab: (id: string) =>
+    request<{ ok: boolean; message: string }>('/labs', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    }),
+
   getStudents: () =>
     request<import('../types.ts').Student[]>('/students'),
 

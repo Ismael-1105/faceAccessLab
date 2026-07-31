@@ -7,6 +7,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Student, Career } from '../types.ts';
 import { CAREERS } from '../types.ts';
+import { api } from '../lib/api.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
 async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url: string; key: string } | null> {
@@ -31,7 +32,7 @@ interface EnrollmentViewProps {
   onCancel: () => void;
 }
 
-const LABS = [
+const FALLBACK_LABS = [
   { value: 'LAB-02', label: 'LAB-02 (Sistemas Operativos)', desc: 'Laboratorio de sistemas operativos' },
 ];
 
@@ -63,10 +64,26 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   const [capturedBlobUrl, setCapturedBlobUrl] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; documentId?: string; phone?: string }>({});
+  const [availableLabs, setAvailableLabs] = useState(FALLBACK_LABS);
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    api.getLabs()
+      .then(labs => {
+        const active = labs.filter(l => l.active);
+        if (active.length > 0) {
+          setAvailableLabs(active.map(l => ({
+            value: l.code,
+            label: `${l.code} (${l.name})`,
+            desc: l.description || `Laboratorio ${l.code}`,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -413,7 +430,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
               Selecciona los laboratorios a los que tendrá acceso el alumno.
             </p>
             <div className="space-y-3">
-              {LABS.map(lab => {
+              {availableLabs.map(lab => {
                 const active = selectedLabs.includes(lab.value);
                 return (
                   <button

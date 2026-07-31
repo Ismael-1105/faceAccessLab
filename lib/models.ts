@@ -49,6 +49,15 @@ export interface IAlert extends Document {
   createdAt: Date;
 }
 
+export interface ILab extends Document {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  active: boolean;
+  createdAt: Date;
+}
+
 const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, lowercase: true },
   passwordHash: { type: String, required: true },
@@ -98,7 +107,17 @@ const AlertSchema = new Schema<IAlert>({
   createdAt: { type: Date, default: Date.now },
 });
 
+const LabSchema = new Schema<ILab>({
+  id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  code: { type: String, required: true, unique: true },
+  description: { type: String },
+  active: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+}, { id: false });
+
 export const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Student = mongoose.models.Student || mongoose.model<IStudent>('Student', StudentSchema);
 export const AccessLog = mongoose.models.AccessLog || mongoose.model<IAccessLog>('AccessLog', AccessLogSchema);
 export const Alert = mongoose.models.Alert || mongoose.model<IAlert>('Alert', AlertSchema);
+export const Lab = mongoose.models.Lab || mongoose.model<ILab>('Lab', LabSchema);

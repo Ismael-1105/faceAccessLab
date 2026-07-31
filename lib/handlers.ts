@@ -1,5 +1,5 @@
 import { connectDB } from './db.ts';
-import { User, Student, AccessLog, Alert } from './models.ts';
+import { User, Student, AccessLog, Alert, Lab } from './models.ts';
 import { hashPassword, comparePassword, generateToken, verifyToken, getTokenFromRequest } from './auth.ts';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteImage } from './s3.ts';
@@ -202,6 +202,137 @@ export async function handleDeleteUser(req: Request): Promise<Response> {
   }
 
   return jsonResponse({ ok: true, message: 'Docente eliminado' });
+}
+
+export async function handleGetLabs(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await authenticate(req);
+  } catch {
+    return errorResponse('No autorizado', 401);
+  }
+
+  await connectDB();
+  const labs = await Lab.find().sort({ code: 1 });
+  const safe = labs.map(l => ({
+    id: l.id,
+    name: l.name,
+    code: l.code,
+    description: l.description,
+    active: l.active,
+    createdAt: l.createdAt,
+  }));
+  return jsonResponse(safe);
+}
+
+export async function handleCreateLab(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const { name, code, description, active } = await req.json() as {
+    name?: string; code?: string; description?: string; active?: boolean;
+  };
+
+  if (!name || !code) {
+    return errorResponse('Nombre y código del laboratorio son requeridos', 400);
+  }
+
+  const normalizedCode = String(code).toUpperCase().trim();
+  const existing = await Lab.findOne({ code: normalizedCode });
+  if (existing) {
+    return errorResponse('Ya existe un laboratorio con ese código', 409);
+  }
+
+  const lab = await Lab.create({
+    id: `lab-${uuidv4().slice(0, 8)}`,
+    name: String(name).trim(),
+    code: normalizedCode,
+    description: description?.trim() || undefined,
+    active: active ?? true,
+  });
+
+  return jsonResponse({
+    lab: {
+      id: lab.id,
+      name: lab.name,
+      code: lab.code,
+      description: lab.description,
+      active: lab.active,
+      createdAt: lab.createdAt,
+    },
+  }, 201);
+}
+
+export async function handleUpdateLab(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const { id, name, code, description, active } = await req.json() as {
+    id?: string; name?: string; code?: string; description?: string; active?: boolean;
+  };
+
+  if (!id) {
+    return errorResponse('ID del laboratorio requerido', 400);
+  }
+
+  const updates: { name?: string; code?: string; description?: string; active?: boolean } = {};
+  if (name && typeof name === 'string') updates.name = name.trim();
+  if (code && typeof code === 'string') updates.code = String(code).toUpperCase().trim();
+  if (typeof description === 'string') updates.description = description.trim() || undefined;
+  if (typeof active === 'boolean') updates.active = active;
+
+  if (Object.keys(updates).length === 0) {
+    return errorResponse('No hay cambios para aplicar', 400);
+  }
+
+  const lab = await Lab.findOneAndUpdate({ id }, { $set: updates }, { new: true });
+  if (!lab) {
+    return errorResponse('Laboratorio no encontrado', 404);
+  }
+
+  return jsonResponse({
+    lab: {
+      id: lab.id,
+      name: lab.name,
+      code: lab.code,
+      description: lab.description,
+      active: lab.active,
+      createdAt: lab.createdAt,
+    },
+  });
+}
+
+export async function handleDeleteLab(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const { id } = await req.json() as { id?: string };
+
+  if (!id) {
+    return errorResponse('ID del laboratorio requerido', 400);
+  }
+
+  const deleted = await Lab.findOneAndDelete({ id });
+  if (!deleted) {
+    return errorResponse('Laboratorio no encontrado', 404);
+  }
+
+  return jsonResponse({ ok: true, message: 'Laboratorio eliminado' });
 }
 
 async function authenticate(req: Request) {
