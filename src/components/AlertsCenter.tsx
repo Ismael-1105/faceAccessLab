@@ -120,18 +120,18 @@ export default function AlertsCenter({ alerts, onAcknowledge, onResolve }: Alert
                       </div>
                     </div>
                   </div>
-                  {/* Actions: solo visibles en hover (progressive disclosure) */}
-                  <div className="flex items-center gap-3 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  {/* Actions: visibles en hover/focus en desktop, siempre en touch */}
+                  <div className="flex items-center gap-3 flex-shrink-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity duration-150">
                     {alert.status === 'active' && (
                       <button onClick={() => onAcknowledge(alert.id)}
-                        className="p-2.5 rounded-xl text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-all cursor-pointer"
+                        className="p-3 rounded-xl text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-all cursor-pointer"
                         title="Reconocer" aria-label="Reconocer alerta">
                         <CheckCircle className="w-4 h-4" weight="regular" />
                       </button>
                     )}
                     {(alert.status === 'active' || alert.status === 'acknowledged') && (
                       <button onClick={() => onResolve(alert.id)}
-                        className="p-2.5 rounded-xl text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 transition-all cursor-pointer"
+                        className="p-3 rounded-xl text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 transition-all cursor-pointer"
                         title="Resolver" aria-label="Resolver alerta">
                         <ShieldCheck className="w-4 h-4" weight="regular" />
                       </button>

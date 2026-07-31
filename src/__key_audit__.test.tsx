@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Student, AccessLog, AuthUser, Alert } from '../src/types.ts';
-import { INITIAL_STUDENTS, INITIAL_LOGS, MOCK_ALERTS } from '../src/data.ts';
+import { INITIAL_STUDENTS, INITIAL_LOGS } from '../src/data.ts';
 import { useApp } from '../src/context/AppContext.tsx';
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -30,7 +30,9 @@ function mockContextValue() {
     setStudents: vi.fn(),
     logs: INITIAL_LOGS as AccessLog[],
     setLogs: vi.fn(),
-    stats: { registered: 324, accessesToday: 128, deniedToday: 12, alertsActive: 3 },
+    alerts: [] as Alert[],
+    setAlerts: vi.fn(),
+    stats: { registered: 324, accessesToday: 128, deniedToday: 12, alertsActive: 0 },
     setStats: vi.fn(),
     handleToggleStudent: vi.fn(),
     handleAddStudent: vi.fn(),
@@ -161,10 +163,15 @@ describe('Key audit — hijos de AdminView', () => {
   });
 
   it('AlertsCenter', async () => {
+    const testAlerts: Alert[] = [
+      { id: 't1', severity: 'critical', source: 'Kiosk-042', message: 'Alerta crítica de prueba', timestamp: '2026-01-01T00:00:00Z', status: 'active' },
+      { id: 't2', severity: 'warning', source: 'AWS CloudWatch', message: 'Alerta de advertencia de prueba', timestamp: '2026-01-01T00:01:00Z', status: 'acknowledged' },
+      { id: 't3', severity: 'info', source: 'Sistema', message: 'Alerta informativa de prueba', timestamp: '2026-01-01T00:02:00Z', status: 'resolved' },
+    ];
     const AlertsCenter = (await import('../src/components/AlertsCenter.tsx')).default;
     const warnings = captureKeyWarnings(
       React.createElement(AlertsCenter, {
-        alerts: MOCK_ALERTS as Alert[],
+        alerts: testAlerts,
         onAcknowledge: vi.fn(),
         onResolve: vi.fn(),
       })

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   ArrowLeft, CheckCircle, XCircle, SignIn, Clock, CalendarBlank,
   IdentificationBadge, Flask, User, Fingerprint,
@@ -46,11 +46,11 @@ function StatusIndicator({ status }: { status: Student['status'] }) {
     <div className="flex items-start gap-3">
       <span
         className={`mt-0.5 w-3 h-3 rounded-full flex-shrink-0 ${isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`}
-        aria-label={isActive ? 'Estado: Activo' : 'Estado: Suspendido'}
+        aria-label={isActive ? 'Estado: Habilitado' : 'Estado: Suspendido'}
       />
       <div>
         <p className={`text-sm font-bold ${isActive ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-          {isActive ? 'Activo' : 'Suspendido'}
+          {isActive ? 'Habilitado' : 'Suspendido'}
         </p>
         <p className="text-caption text-zinc-400 dark:text-zinc-500 leading-tight mt-0.5">
           {isActive ? 'Puede acceder al laboratorio' : 'Acceso bloqueado'}

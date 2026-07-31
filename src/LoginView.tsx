@@ -52,7 +52,7 @@ export default function LoginView() {
       >
         <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mb-6 transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
-          Volver al inicio 1
+          Volver al inicio
         </Link>
 
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-8">
@@ -69,7 +69,7 @@ export default function LoginView() {
               <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Correo institucional</label>
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-                placeholder="docente@universidad.edu"
+                placeholder="docente@uide.edu.ec"
                 className="w-full text-sm p-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all"
               />
             </div>

@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
-  Plus, CheckCircle, XCircle, Trash, ShieldCheck, Cpu, SlidersHorizontal, SignOut,
-  ChartBar, GearSix
+  Plus, CheckCircle, XCircle, Trash, SlidersHorizontal, SignOut,
+  ChartBar, GearSix, CaretLeft, CaretRight
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import { api, getToken } from '../lib/api.ts';
@@ -18,33 +18,47 @@ import StudentDetailView from './StudentDetailView.tsx';
 import AlertsCenter from './AlertsCenter.tsx';
 import ReportsView from './ReportsView.tsx';
 import EmptyState from './EmptyState.tsx';
-import { MOCK_ALERTS } from '../data.ts';
-import type { Alert } from '../types.ts';
 
 export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'arquitectura' } = {}) {
   const {
     students, logs, stats,
     handleToggleStudent, handleAddStudent, handleClearLogs,
+    alerts, setAlerts,
+    user, handleLogout, connectionStatus,
   } = useApp();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'All' | 'Permitido' | 'Denegado'>('All');
+  const [logPage, setLogPage] = useState(0);
+  const LOGS_PER_PAGE = 20;
   const [showEnrollment, setShowEnrollment] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>(MOCK_ALERTS);
-  const [showConfigMenu, setShowConfigMenu] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [clearState, setClearState] = useState<'idle' | 'confirming' | 'done'>('idle');
   const [typedConfirm, setTypedConfirm] = useState('');
 
-  const handleAcknowledgeAlert = (id: string) => {
-    setAlerts(prev => prev.map(a => a.id === id && a.status === 'active' ? { ...a, status: 'acknowledged' as const } : a));
+  const handleAcknowledgeAlert = async (id: string) => {
+    const prev = alerts;
+    setAlerts(prevState => prevState.map(a => a.id === id && a.status === 'active' ? { ...a, status: 'acknowledged' as const } : a));
+    try {
+      await api.updateAlert(id, 'acknowledged');
+    } catch (e) {
+      setAlerts(prev);
+      console.error('[Admin] Error al reconocer alerta:', e);
+    }
   };
 
-  const handleResolveAlert = (id: string) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'resolved' as const } : a));
+  const handleResolveAlert = async (id: string) => {
+    const prev = alerts;
+    setAlerts(prevState => prevState.map(a => a.id === id ? { ...a, status: 'resolved' as const } : a));
+    try {
+      await api.updateAlert(id, 'resolved');
+    } catch (e) {
+      setAlerts(prev);
+      console.error('[Admin] Error al resolver alerta:', e);
+    }
   };
 
   const handleExportCSV = () => {
@@ -66,12 +80,38 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     return matchesSearch && matchesFilter;
   });
 
+  const totalLogPages = Math.max(1, Math.ceil(filteredLogs.length / LOGS_PER_PAGE));
+  const paginatedLogs = filteredLogs.slice(logPage * LOGS_PER_PAGE, (logPage + 1) * LOGS_PER_PAGE);
+
+  const weeklyBars = useMemo(() => {
+    const dayLabels = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+    const counts = new Array(7).fill(0);
+    const dayIndex = new Map([
+      ['Mon', 0], ['Tue', 1], ['Wed', 2], ['Thu', 3], ['Fri', 4], ['Sat', 5], ['Sun', 6],
+    ]);
+    logs.forEach(l => {
+      const day = new Date(l.date).toString().slice(0, 3);
+      const idx = dayIndex.get(day);
+      if (idx !== undefined) counts[idx] += 1;
+    });
+    const max = Math.max(1, ...counts);
+    return dayLabels.map((day, i) => ({ day, count: counts[i], pct: `${Math.round((counts[i] / max) * 100)}%` }));
+  }, [logs]);
+
+  const authorizedRate = useMemo(() => {
+    if (logs.length === 0) return 0;
+    const granted = logs.filter(l => l.result === 'Permitido').length;
+    return parseFloat(((granted / logs.length) * 100).toFixed(1));
+  }, [logs]);
+
+  useEffect(() => {
+    setLogPage(0);
+  }, [searchQuery, logFilter]);
+
   const filteredStudents = students.filter(s =>
     s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
-
-  const longestName = students.reduce((max, s) => Math.max(max, s.name.length), 0);
 
   type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'reports' | 'config';
   const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
@@ -84,19 +124,28 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   return (
     <div className="pt-16 min-h-screen bg-surface dark:bg-zinc-950 flex flex-col md:flex-row">
 
-      {/* Sidebar — always expanded, 4 primary tabs */}
-      <aside className="w-full md:w-60 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:min-h-[calc(100vh-64px)] px-5 py-5">
-        <div className="mb-4">
-          <p className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">Administrador</p>
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">Consola de Control</h3>
+      {/* Sidebar — horizontal en móvil, columna fija en desktop */}
+      <aside className="w-full md:w-60 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:min-h-[calc(100vh-64px)] px-4 py-3 md:px-5 md:py-5">
+        <div className="mb-3 md:mb-4 flex items-center justify-between md:block">
+          <div>
+            <p className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">Administrador</p>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">Consola de Control</h3>
+          </div>
+          <button
+            onClick={() => { handleLogout(); router.push('/'); }}
+            className="md:hidden p-2.5 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all cursor-pointer"
+            aria-label="Cerrar sesión"
+          >
+            <SignOut className="w-5 h-5" weight="regular" />
+          </button>
         </div>
 
-        <nav className="flex flex-col gap-1 flex-1">
+        <nav className="flex md:flex-col gap-1 flex-1 overflow-x-auto md:overflow-visible pb-1 md:pb-0 -mx-1 px-1 md:mx-0 md:px-0">
           {PRIMARY_ITEMS.map(({ tab, icon: Icon, label }) => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
-              className={`w-full py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
+              className={`w-full shrink-0 md:shrink py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
                 activeTab === tab
                   ? 'bg-accent-600 text-white shadow-sm'
                   : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200'
@@ -106,13 +155,11 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               {label}
             </button>
           ))}
-        </nav>
 
-        {/* Divider + secondary items */}
-        <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-1">
+          {/* Calibración: en desktop va separada con divider */}
           <button
             onClick={() => setActiveTab('config')}
-            className={`w-full py-2 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
+            className={`w-full shrink-0 md:shrink py-2 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 cursor-pointer md:mt-4 md:pt-4 md:border-t md:border-zinc-100 md:dark:border-zinc-800 ${
               activeTab === 'config'
                 ? 'bg-accent-600 text-white shadow-sm'
                 : 'text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -121,19 +168,21 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <GearSix className="w-4 h-4 flex-shrink-0" weight={activeTab === 'config' ? 'fill' : 'regular'} />
             Calibración
           </button>
-        </div>
+        </nav>
 
-        {/* Status + quick links */}
-        <div className="pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
-          <div className="flex items-center gap-2 px-1" title="Kiosk-042 — Conectado">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" aria-hidden="true" />
-            <span className="text-label text-zinc-400 dark:text-zinc-500 font-medium">Kiosk-042 en línea</span>
-          </div>
+        {/* Status — solo en desktop */}
+        <div className="hidden md:block pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+          {user && (
+            <div className="flex items-center gap-2 px-1" title={user.name}>
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" aria-hidden="true" />
+              <span className="text-label text-zinc-400 dark:text-zinc-500 font-medium truncate">{user.name || user.email}</span>
+            </div>
+          )}
         </div>
 
         <button
-          onClick={() => router.push('/')}
-          className="w-full mt-4 py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all flex items-center gap-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+          onClick={() => { handleLogout(); router.push('/'); }}
+          className="hidden md:flex w-full mt-4 py-2.5 px-3 text-xs text-left rounded-lg font-semibold transition-all items-center gap-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
         >
           <SignOut className="w-4 h-4 flex-shrink-0" weight="regular" />
           Cerrar sesión
@@ -144,6 +193,16 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
       <main className="flex-1 p-5 md:p-8 overflow-x-hidden">
         <h1 className="sr-only">Panel de Administración</h1>
 
+        {connectionStatus === 'offline' && (
+          <div role="status" className="mb-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <ShieldWarning className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" weight="fill" />
+            <div>
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Sin conexión con el backend</p>
+              <p className="text-caption text-amber-700 dark:text-amber-400 mt-0.5">Mostrando datos de demostración. Verifica MongoDB y los servicios AWS.</p>
+            </div>
+          </div>
+        )}
+
         {/* ========== OVERVIEW ========== */}
         {activeTab === 'overview' && (
           <div className="space-y-8">
@@ -152,12 +211,12 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               { label: 'Alumnos', value: stats.registered, icon: Users, accent: 'bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400' },
               { label: 'Accesos Hoy', value: stats.accessesToday, icon: SignIn, accent: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400' },
               { label: 'Bloqueos', value: stats.deniedToday, icon: XCircle, accent: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400' },
-              { label: 'Alertas', value: stats.alertsActive, icon: ShieldWarning, accent: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400', alert: true },
+              { label: 'Alertas', value: alerts.filter(a => a.status === 'active').length, icon: ShieldWarning, accent: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400', alert: true },
               ].map(({ label, value, icon: Icon, accent, alert }, i) => (
                 <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
                   <div>
                     <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
-                    <p className={`${i === 0 ? 'text-3xl' : 'text-2xl'} font-black tracking-tight mt-1 ${alert && value > 0 ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-white'}`}>
+                    <p className={`${i === 0 ? 'text-3xl' : 'text-2xl'} font-black tracking-tight mt-1 ${alert && value > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-900 dark:text-white'}`}>
                       {value}
                     </p>
                   </div>
@@ -172,27 +231,22 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               {/* Bar chart */}
               <div className="lg:col-span-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
                 <div className="mb-6">
-                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Accesos por Dia</h4>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Lecturas biometricas procesadas esta semana.</p>
+                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Accesos por Día</h4>
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Lecturas biométricas procesadas esta semana.</p>
                 </div>
                 <div className="flex justify-between items-end h-52 px-4 gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-1.5 pt-4">
-                  {[
-                    { day: 'Lun', count: 45, pct: '35%' },
-                    { day: 'Mar', count: 72, pct: '56%' },
-                    { day: 'Mie', count: 61, pct: '48%' },
-                    { day: 'Jue', count: 94, pct: '73%' },
-                    { day: 'Vie', count: 128, pct: '100%' },
-                    { day: 'Sab', count: 78, pct: '61%' },
-                    { day: 'Dom', count: 50, pct: '39%' }
-                  ].map((bar) => (
+                  {weeklyBars.map((bar) => (
                     <div key={bar.day} className="flex flex-col items-center flex-1 group">
                       <div className="relative w-full flex justify-center">
-                        <div className="absolute -top-7 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded-lg transition-transform">
+                        <div className="absolute -top-7 scale-0 group-hover:scale-100 group-focus-within:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded-lg transition-transform">
                           {bar.count}
                         </div>
                         <div
+                          tabIndex={0}
+                          role="img"
+                          aria-label={`${bar.day}: ${bar.count} accesos`}
                           style={{ height: bar.pct }}
-                          className="w-4/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 transition-all cursor-pointer"
+                          className="w-4/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 outline-none transition-all cursor-pointer"
                         />
                       </div>
                       <span className="text-label font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>
@@ -204,30 +258,30 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
               {/* Donut */}
               <div className="lg:col-span-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 flex flex-col justify-between shadow-sm">
                 <div>
-                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Tasa de Autorizacion</h4>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Metrica acumulativa.</p>
+                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Tasa de Autorización</h4>
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Métrica acumulativa.</p>
                 </div>
                 <div className="my-6 relative flex items-center justify-center">
                   <svg className="w-36 h-36" viewBox="0 0 36 36">
                     <path className="text-zinc-100 dark:text-zinc-800" strokeWidth="3.5" stroke="currentColor" fill="none"
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                     <path className="text-green-500"
-                      strokeDasharray="91.5, 100" strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none"
+                      strokeDasharray={`${authorizedRate}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none"
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                   </svg>
                   <div className="absolute text-center">
-                    <p className="text-2xl font-black text-zinc-900 dark:text-white font-mono">91.5%</p>
+                    <p className="text-2xl font-black text-zinc-900 dark:text-white font-mono">{authorizedRate}%</p>
                     <p className="text-micro font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Aceptado</p>
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-label border-t border-zinc-100 dark:border-zinc-800 pt-3">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
-                    <span className="text-zinc-500 dark:text-zinc-400">91.5% Permitidos</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">{authorizedRate}% Permitidos</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
-                    <span className="text-zinc-500 dark:text-zinc-400">8.5% Denegados</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">{(100 - authorizedRate).toFixed(1)}% Denegados</span>
                   </div>
                 </div>
               </div>
@@ -311,7 +365,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <div>
                 <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Registro de Alumnos</h3>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Gestione identidades biometricas del LAB-02.</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Gestione identidades biométricas del LAB-02.</p>
               </div>
               <button
                 onClick={() => setShowEnrollment(true)}
@@ -335,13 +389,13 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
 
             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
+                <table aria-label="Registro de alumnos" className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
                       <th className="p-4">Estudiante</th>
                       <th className="p-4">Especialidad</th>
                       <th className="p-4">Lab</th>
-                      <th className="p-4 text-center">Firma</th>
+                      <th className="p-4 text-center">Match</th>
                       <th className="p-4 text-center">Permiso</th>
                     </tr>
                   </thead>
@@ -398,7 +452,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 <button onClick={handleExportCSV}
                   className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
                   <FileCsv className="w-4 h-4" weight="regular" />
-                  Descargar CSV
+                  Exportar CSV
                 </button>
               </div>
             </div>
@@ -426,7 +480,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 {filteredLogs.length > 0 ? (
-                  <table className="w-full border-collapse text-xs">
+                  <table aria-label="Historial de accesos" className="w-full border-collapse text-xs">
                     <thead>
                       <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
                         <th className="p-4">ID</th>
@@ -438,7 +492,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredLogs.map((log) => (
+                      {paginatedLogs.map((log) => (
                         <tr key={log.id} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
                           <td className="p-4 font-mono text-zinc-400 dark:text-zinc-500 font-semibold">{log.id}</td>
                           <td className="p-4">
@@ -469,6 +523,34 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   <div className="py-14 text-center text-zinc-400 dark:text-zinc-500">No se encontraron accesos con los filtros provistos.</div>
                 )}
               </div>
+              {filteredLogs.length > 0 && (
+                <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  <span className="text-label font-mono text-zinc-400 dark:text-zinc-500">
+                    Mostrando {logPage * LOGS_PER_PAGE + 1}–{Math.min((logPage + 1) * LOGS_PER_PAGE, filteredLogs.length)} de {filteredLogs.length} registros
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setLogPage(p => Math.max(0, p - 1))}
+                      disabled={logPage === 0}
+                      className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400"
+                      aria-label="Página anterior"
+                    >
+                      <CaretLeft className="w-3.5 h-3.5" weight="bold" />
+                    </button>
+                    <span className="text-label font-mono text-zinc-500 dark:text-zinc-400">
+                      Pág. {logPage + 1} de {totalLogPages}
+                    </span>
+                    <button
+                      onClick={() => setLogPage(p => Math.min(totalLogPages - 1, p + 1))}
+                      disabled={logPage >= totalLogPages - 1}
+                      className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400"
+                      aria-label="Página siguiente"
+                    >
+                      <CaretRight className="w-3.5 h-3.5" weight="bold" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -492,15 +574,15 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
           <div className="space-y-6">
             <div>
               <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Calibración y Umbrales</h3>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Ajuste de sensibilidad, tolerancia y sincronizacion.</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Ajuste de sensibilidad, tolerancia y sincronización.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm space-y-5">
-                <h4 className="font-bold text-sm text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-2">Parametros del Sensor</h4>
+                <h4 className="font-bold text-sm text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800 pb-2">Parámetros del Sensor</h4>
                 {[
-                  { label: 'Umbral de Similitud Minimo', value: '85.0%', min: '75', max: '99', default: '85', desc: 'Limite matematico en Amazon Rekognition para decretar match.' },
-                  { label: 'Tolerancia Micro-Parpadeo', value: 'Alta', min: '1', max: '3', default: '2', desc: 'Sensibilidad al evaluar vivacidad contra fotos estaticas.' },
-                  { label: 'Tiempo de Apertura', value: '10 Segundos', min: '3', max: '30', default: '10', desc: 'Lapso que la bobina electromagnetica permanece energizada.' },
+                  { label: 'Umbral de Similitud Mínimo', value: '85.0%', min: '75', max: '99', default: '85', desc: 'Límite matemático en Amazon Rekognition para decretar match.' },
+                  { label: 'Tolerancia Micro-Parpadeo', value: 'Alta', min: '1', max: '3', default: '2', desc: 'Sensibilidad al evaluar vivacidad contra fotos estáticas.' },
+                  { label: 'Tiempo de Apertura', value: '10 Segundos', min: '3', max: '30', default: '10', desc: 'Lapso que la bobina electromagnética permanece energizada.' },
                 ].map(({ label, value, min, max, default: def, desc }) => (
                   <div key={label}>
                     <div className="flex justify-between items-center mb-1.5">

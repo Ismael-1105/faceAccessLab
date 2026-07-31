@@ -25,20 +25,22 @@ Control de acceso biométrico universitario que combina reconocimiento facial co
 - Entorno universitario: laboratorios con estaciones kiosco equipadas con cámara.
 - Portal administrativo accesible desde navegador web para docentes.
 - Proyecto capstone orientado a presentación y demostración.
-- Despliegue en Vercel (frontend estático).
+- Despliegue en Vercel (Next.js con output standalone).
 
 ## Capabilities and Constraints
 
 - **Rol kiosco (estudiante):** Pantalla única con feed de cámara, pipeline de escaneo facial (detección, prueba de vida, comparación biométrica, verificación de permisos), resultado concedido/denegado.
-- **Rol docente (portal):** Dashboard con métricas (registrados, accesos hoy, denegados hoy, alertas activas), gráficos semanales, tabla de alumnos con toggle de acceso individual, historial de accesos con exportación CSV, centro de alertas, calibración de sensor, consola de servicios AWS.
-- **Autenticación:** Simulada con usuarios mock (`docente@faceaccess.lab`, `admin@faceaccess.lab`, etc.).
+- **Rol docente (portal):** Dashboard con métricas (registrados, accesos hoy, denegados hoy, alertas activas), gráficos semanales, tabla de alumnos con toggle de acceso individual, historial de accesos paginado (20 filas) con exportación CSV, centro de alertas con ciclo active→acknowledged→resolved, calibración de sensor, consola de servicios AWS.
+- **Autenticación:** JWT con bcrypt; usuarios sembrados (`docente@faceaccess.lab`, `admin@faceaccess.lab`, etc.) para roles docente/estudiante.
 - **Tema claro/oscuro:** Soportado con persistencia en localStorage y respeto de preferencia del sistema.
 - **Permiso de cámara:** Gate de permiso antes de activar el kiosco.
-- **Enrollamiento de estudiantes:** Vista de registro con captura de foto.
+- **Enrollamiento de estudiantes:** Vista de registro en página única con captura de foto, carrera (enum de 7 opciones UIDE) y permisos de laboratorio (LAB-02).
 - **Reportes:** Vista de reportes exportables.
-- Toda la aplicación es 100% client-side con datos mock (`src/data.ts`). No hay backend real.
+- **Backend real:** API routes de Next.js conectadas a MongoDB Atlas (Mongoose), AWS Rekognition (registro, comparación, liveness), AWS S3 (fotos), AWS SNS (alertas push) y CloudWatch (métricas).
+- **Alertas:** Generadas en backend (accesos denegados repetidos → SNS + documento en MongoDB) y sincronizadas en el portal con polling cada 30s.
 - No integra la API de Gemini en tiempo real (dependencia declarada pero no conectada).
-- Las imágenes de estudiantes se cargan desde `public/images/`.
+- `src/data.ts` conserva datos seed (estudiantes, logs, servicios cloud, usuarios) como estado inicial/fallback; la fuente de verdad es MongoDB.
+- Las fotos de estudiantes nuevos se suben a S3; `public/images/` provee avatares y assets seed.
 - Los nombres de dominio de ejemplo (`universidad.edu`) deberán reemplazarse con la marca UIDE.
 
 ## Brand Commitments
@@ -50,7 +52,9 @@ Control de acceso biométrico universitario que combina reconocimiento facial co
 
 ## Evidence on Hand
 
-- Mock data completa: 5 estudiantes, 4 logs de acceso, 8 alertas, 9 servicios cloud, 6 usuarios de autenticación.
+- Data seed en `src/data.ts`: 5 estudiantes, 4 logs de acceso, 9 servicios cloud, 6 usuarios de autenticación.
+- Backend funcional: API routes, MongoDB Atlas, AWS Rekognition/S3/SNS, CloudWatch, auth JWT.
+- Favicon y logo circular en `app/icon.png` / `app/apple-icon.png`, desde `assets/favicon/logo.png`.
 - Documentación de pantallas en `docs/inventario-pantallas.md`.
 - Guía de CI/CD en `docs/documentacion-cicd.md`.
 
@@ -59,7 +63,7 @@ Control de acceso biométrico universitario que combina reconocimiento facial co
 1. **Demo-ready first.** Cada flujo debe sentirse completo y pulido desde el primer uso, sin depender de configuración externa.
 2. **Claridad de rol.** La diferencia entre experiencia kiosco (estudiante) y portal (docente) debe ser inmediatamente evidente.
 3. **Mostrar la arquitectura.** La vista de servicios AWS no es decorativa — es parte central de la propuesta de valor del proyecto.
-4. **Extensible por diseño.** El sistema de datos mock debe permitir reemplazar fuentes de datos reales sin reescribir componentes.
+4. **Extensible por diseño.** La capa de datos (seed en `src/data.ts` + API) permite intercambiar fuentes sin reescribir componentes.
 5. **Identidad universitaria.** Toda la superficie visual debe reflejar la marca UIDE.
 
 ## Accessibility & Inclusion

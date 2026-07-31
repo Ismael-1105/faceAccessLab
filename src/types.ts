@@ -118,8 +118,6 @@ export interface AuthUser {
   studentId?: string;
 }
 
-export type StudentViewType = 'kiosk' | 'profile';
-
 export interface Alert {
   id: string;
   severity: 'critical' | 'warning' | 'info';

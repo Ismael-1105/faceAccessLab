@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Student, AccessLog, AuthUser } from '../types.ts';
+import { Student, AccessLog, AuthUser, Alert } from '../types.ts';
 import { INITIAL_STUDENTS, DAILY_STATS } from '../data.ts';
 import { api, getToken, setToken } from '../lib/api.ts';
 import ErrorBoundary from '../components/ErrorBoundary.tsx';
@@ -18,8 +18,12 @@ interface AppContextType {
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   logs: AccessLog[];
   setLogs: React.Dispatch<React.SetStateAction<AccessLog[]>>;
+  alerts: Alert[];
+  setAlerts: React.Dispatch<React.SetStateAction<Alert[]>>;
   stats: { registered: number; accessesToday: number; deniedToday: number; alertsActive: number };
   setStats: React.Dispatch<React.SetStateAction<{ registered: number; accessesToday: number; deniedToday: number; alertsActive: number }>>;
+  connectionStatus: 'checking' | 'online' | 'offline';
+  setConnectionStatus: React.Dispatch<React.SetStateAction<'checking' | 'online' | 'offline'>>;
   handleToggleStudent: (id: string) => void;
   handleAddStudent: (newStudent: Student) => void;
   handleAddLog: (newLog: AccessLog) => void;
@@ -67,6 +71,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
   const [logs, setLogs] = useState<AccessLog[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [showPermissionGate, setShowPermissionGate] = useState(false);
 
@@ -76,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deniedToday: DAILY_STATS.deniedToday,
     alertsActive: DAILY_STATS.alertsActive
   });
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   useEffect(() => {
     const token = getToken();
@@ -103,11 +109,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         api.getLogs().catch(() => null),
         api.getStats().catch(() => null),
         api.getAlerts().catch(() => null),
-      ]).then(([studentsData, logsData, statsData]) => {
+      ]).then(([studentsData, logsData, statsData, alertsData]) => {
+        const anyLive = studentsData !== null || logsData !== null || statsData !== null || alertsData !== null;
+        setConnectionStatus(anyLive ? 'online' : 'offline');
         if (studentsData) setStudents(studentsData);
         if (logsData) setLogs(logsData);
         if (statsData) setStats(statsData);
+        if (alertsData) setAlerts(alertsData);
       });
+
+      const interval = setInterval(() => {
+        api.getAlerts()
+          .then(data => {
+            if (data) {
+              setAlerts(data);
+              setConnectionStatus('online');
+            }
+          })
+          .catch(() => setConnectionStatus(prev => prev === 'online' ? prev : 'offline'));
+      }, 30000);
+
+      return () => clearInterval(interval);
     }
   }, [user]);
 
@@ -161,6 +183,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const handleClearAlerts = () => {
+    setAlerts([]);
     setStats(prev => ({ ...prev, alertsActive: 0 }));
   };
 
@@ -171,8 +194,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       theme, toggleTheme, user, handleLogin, handleLogout,
-      students, setStudents, logs, setLogs,
-      stats, setStats,
+      students, setStudents, logs, setLogs, alerts, setAlerts,
+      stats, setStats, connectionStatus, setConnectionStatus,
       handleToggleStudent, handleAddStudent, handleAddLog, handleIncrementStats,
       handleClearAlerts, handleClearLogs,
       hasCameraPermission, setHasCameraPermission,

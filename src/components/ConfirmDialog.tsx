@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { WarningOctagon, X } from '@phosphor-icons/react';
+import { WarningOctagon } from '@phosphor-icons/react';
 
 interface ConfirmDialogProps {
   open: boolean;

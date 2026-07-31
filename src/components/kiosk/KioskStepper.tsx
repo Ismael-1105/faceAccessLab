@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Check, X, Printer, ScanFace, ShieldCheck, Database, LockOpen, Lock, User, Loader2, Radio,
+  Check, X, Printer, ScanFace, ShieldCheck, Database, LockOpen, Lock, User, Loader2, Radio, ShieldAlert,
 } from 'lucide-react';
 import type { Student } from '@/src/types';
 
@@ -40,7 +40,7 @@ export default function KioskStepper({
   return (
     <section className="md:col-span-5 lg:col-span-4 flex flex-col animate-kiosk-fade-in">
       {/* Card del stepper */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 rounded-[20px] p-6 lg:p-7 shadow-sm lg:max-h-[460px] lg:overflow-hidden">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 rounded-[20px] p-6 lg:p-7 shadow-sm lg:max-h-[460px] lg:overflow-y-auto">
         <p className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-2 mb-6">
           <Radio className="w-3.5 h-3.5 text-accent-500 dark:text-accent-400" />
           Proceso de verificación
@@ -158,6 +158,41 @@ export default function KioskStepper({
               {confidence.toFixed(1)}%
             </span>
           </div>
+
+          {!isAllowed && (
+            <div className="mt-4 pt-4 border-t border-red-100 dark:border-red-900/30">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div className="space-y-2 min-w-0">
+                  <p className="text-[11px] font-mono font-bold text-red-700 dark:text-red-400 uppercase tracking-wider">Posibles causas</p>
+                  <ul className="space-y-1.5">
+                    <li className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                      <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 shrink-0" />
+                      <span><strong className="font-semibold">R01</strong> Rostro no identificado en base de datos del laboratorio</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                      <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 shrink-0" />
+                      <span><strong className="font-semibold">R02</strong> Cuenta suspendida o sin permisos activos</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                      <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 shrink-0" />
+                      <span><strong className="font-semibold">R03</strong> Calidad de captura insuficiente (iluminación, ángulo, oclusión)</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                      <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 shrink-0" />
+                      <span><strong className="font-semibold">R04</strong> Verificación de liveness no superada</span>
+                    </li>
+                  </ul>
+                  <div className="flex items-start gap-2 pt-1">
+                    <span className="text-red-400 text-xs mt-0.5">→</span>
+                    <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+                      Acude al <strong className="font-semibold">Departamento de Sistemas</strong> para verificar tu registro biométrico o consultar el estado de tu cuenta.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={onPrintReceipt}

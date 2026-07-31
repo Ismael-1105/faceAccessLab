@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   ArrowRight, Lightning, Crosshair, Cloud,
   DeviceMobile, Cpu, Key, Database, ShieldWarning
@@ -32,20 +32,16 @@ export default function HomeView() {
 
   const handleAccess = async () => {
     if (requestingCamera) return;
-    console.log('[Camera] handleAccess: iniciando solicitud de cámara...');
     setRequestingCamera(true);
     try {
-      console.log('[Camera] llamando a getUserMedia con facingMode: user');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' }
       });
-      console.log('[Camera] getUserMedia EXITOSO, tracks:', stream.getTracks().length);
       stream.getTracks().forEach(track => track.stop());
       setHasCameraPermission(true);
-      console.log('[Camera] permiso concedido, navegando a /kiosco');
       router.push('/kiosco');
     } catch (err) {
-      console.log('[Camera] getUserMedia FALLÓ:', (err as DOMException).name, (err as DOMException).message);
+      console.error('[Camera] getUserMedia FALLÓ:', (err as DOMException).name, (err as DOMException).message);
       setShowPermissionGate(true);
       router.push('/kiosco');
     } finally {

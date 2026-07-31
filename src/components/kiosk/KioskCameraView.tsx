@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, X, Camera as CameraIcon, Loader2, ScanFace, Settings } from 'lucide-react';
+import { Check, X, Camera as CameraIcon, Loader2, ScanFace } from 'lucide-react';
 import type { FlowState } from '@/src/hooks/useKioskFlow';
 import FaceLivenessView from '@/src/components/FaceLivenessView';
 

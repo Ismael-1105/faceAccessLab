@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FileCsv, FilePdf, ChartBar, TrendUp, Users, Clock, CalendarBlank, ArrowRight } from '@phosphor-icons/react';
+import { FileCsv, ChartBar, TrendUp, Users, Clock } from '@phosphor-icons/react';
 import type { AccessLog } from '../types.ts';
 import { DAILY_STATS } from '../data.ts';
 
@@ -134,7 +134,7 @@ export default function ReportsView({ logs }: ReportsViewProps) {
           { label: 'Total Accesos', value: totalAccesses, icon: ChartBar, color: 'bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400' },
           { label: 'Permitidos', value: permitidos, icon: TrendUp, color: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400' },
           { label: 'Denegados', value: denegados, icon: Users, color: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400' },
-          { label: 'Similitud Prom.', value: `${avgSimilarity}%`, icon: Clock, color: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' },
+          { label: 'Similitud Promedio', value: `${avgSimilarity}%`, icon: Clock, color: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
             <div>
@@ -162,11 +162,15 @@ export default function ReportsView({ logs }: ReportsViewProps) {
               return (
                 <div key={i} className="flex flex-col items-center flex-1 group">
                   <div className="relative w-full flex justify-center">
-                    <div className="absolute -top-6 scale-0 group-hover:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded transition-transform whitespace-nowrap">
+                    <div className="absolute -top-6 scale-0 group-hover:scale-100 group-focus-within:scale-100 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-micro font-mono font-bold px-1.5 py-0.5 rounded transition-transform whitespace-nowrap">
                       {bar.count}
                     </div>
-                    <div style={{ height: `${pct}%` }}
-                      className="w-3/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 transition-all cursor-pointer"
+                    <div
+                      tabIndex={0}
+                      role="img"
+                      aria-label={`${bar.day}: ${bar.count} accesos`}
+                      style={{ height: `${pct}%` }}
+                      className="w-3/5 rounded-t-lg bg-accent-500 hover:bg-accent-600 focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 outline-none transition-all cursor-pointer"
                     />
                   </div>
                   <span className="text-micro font-semibold text-zinc-400 dark:text-zinc-500 mt-2">{bar.day}</span>

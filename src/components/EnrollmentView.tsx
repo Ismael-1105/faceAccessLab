@@ -59,8 +59,10 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
   const [capturedBlobUrl, setCapturedBlobUrl] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; documentId?: string; phone?: string }>({});
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -180,10 +182,30 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     setCapturedBlobUrl(null);
     setCaptureSuccess(false);
     setRegistrationError('');
+    setFieldErrors({});
     stopWebcam();
   };
 
+  const validateFields = () => {
+    const errors: { email?: string; documentId?: string; phone?: string } = {};
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      errors.email = 'Ingresa un correo válido (ej. alumno@uide.edu.ec)';
+    }
+    if (documentId.trim() && !/^\d{6,10}$/.test(documentId.trim())) {
+      errors.documentId = 'La cédula debe contener entre 6 y 10 dígitos';
+    }
+    if (phone.trim() && !/^\d{7,10}$/.test(phone.trim())) {
+      errors.phone = 'El teléfono debe contener entre 7 y 10 dígitos';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async () => {
+    if (!validateFields()) {
+      setRegistrationError('Revisa los campos marcados en el formulario.');
+      return;
+    }
     setRegistering(true);
     setRegistrationError('');
 
@@ -240,7 +262,8 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     };
 
     setRegistering(false);
-    onComplete(student);
+    setRegistrationComplete(true);
+    setTimeout(() => onComplete(student), 1200);
   };
 
   const hasEnteredData =
@@ -260,8 +283,8 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   const bioSteps = [
     { id: 'camera', label: 'Cámara activa', done: useWebcam || capturedImage !== null },
     { id: 'captured', label: 'Captura completada', done: capturedImage !== null },
-    { id: 'uploading', label: 'Registrando biometría', done: registering, active: registering },
-    { id: 'complete', label: 'Registro exitoso', done: false },
+    { id: 'uploading', label: 'Registrando biometría', done: registering || registrationComplete, active: registering },
+    { id: 'complete', label: 'Registro exitoso', done: registrationComplete },
   ];
 
   return (
@@ -325,17 +348,25 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   <IdentificationBadge className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                   <input id="en-doc" type="text" placeholder="Ej. 1723456789"
                     value={documentId} onChange={e => setDocumentId(e.target.value)}
-                    className={inputClass} />
+                    aria-invalid={!!fieldErrors.documentId}
+                    className={`${inputClass} ${fieldErrors.documentId ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
                 </div>
+                {fieldErrors.documentId && (
+                  <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.documentId}</p>
+                )}
               </div>
               <div>
                 <label htmlFor="en-email" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Correo</label>
                 <div className="relative">
                   <Envelope className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                  <input id="en-email" type="email" placeholder="alumno@universidad.edu"
+                  <input id="en-email" type="email" placeholder="alumno@uide.edu.ec"
                     value={email} onChange={e => setEmail(e.target.value)}
-                    className={inputClass} />
+                    aria-invalid={!!fieldErrors.email}
+                    className={`${inputClass} ${fieldErrors.email ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
                 </div>
+                {fieldErrors.email && (
+                  <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.email}</p>
+                )}
               </div>
               <div>
                 <label htmlFor="en-career" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Carrera</label>
@@ -362,8 +393,12 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                   <input id="en-phone" type="tel" placeholder="Ej. 0991234567"
                     value={phone} onChange={e => setPhone(e.target.value)}
-                    className={inputClass} />
+                    aria-invalid={!!fieldErrors.phone}
+                    className={`${inputClass} ${fieldErrors.phone ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
                 </div>
+                {fieldErrors.phone && (
+                  <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.phone}</p>
+                )}
               </div>
             </div>
           </section>
@@ -552,7 +587,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-xl text-sm transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60"
+          className="inline-flex items-center gap-2 bg-accent-600 hover:bg-accent-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-xl text-sm transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60"
         >
           {registering ? (
             <>

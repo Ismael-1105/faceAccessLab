@@ -69,14 +69,14 @@ export default function ArchitectureView() {
       case 'aws-api':
         return [
           { name: 'Ancho de Banda', val: '45.1 MB', status: 'Seguro' },
-          { name: 'Cache Hit', val: '86%', status: 'Rapido' },
+          { name: 'Cache Hit', val: '86%', status: 'Rápido' },
           { name: 'SSL/TLS', val: '1.3', status: 'Cifrado' }
         ];
       case 'mongodb-atlas':
         return [
           { name: 'Operaciones/Seg', val: '14 OPS', status: 'Listo' },
           { name: 'Lecturas/Seg', val: '112 QPS', status: 'Listo' },
-          { name: 'Respuesta', val: '6 ms', status: 'Ultra-Bajo' }
+          { name: 'Respuesta', val: '6 ms', status: 'Ultra-bajo' }
         ];
       case 'aws-s3':
         return [
@@ -127,7 +127,7 @@ export default function ArchitectureView() {
             Topologia Serverless de Grado Industrial
           </h2>
           <p className="text-zinc-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-            Microservicios en AWS configurados para garantizar accesos biometricos rapidos, auditables y seguros de extremo a extremo.
+            Microservicios en AWS configurados para garantizar accesos biométricos rápidos, auditables y seguros de extremo a extremo.
           </p>
         </div>
       </section>
@@ -267,7 +267,7 @@ export default function ArchitectureView() {
               </div>
 
               <div className="text-label text-zinc-500 border-t border-zinc-800/50 pt-4 mt-6">
-                * Las firmas biometricas se destruyen al termino del ciclo lambda para salvaguardar la privacidad GDPR.
+                * Las firmas biométricas se destruyen al término del ciclo lambda para salvaguardar la privacidad GDPR.
               </div>
             </motion.div>
           </AnimatePresence>
@@ -288,8 +288,8 @@ export default function ArchitectureView() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
               { title: 'Cache Local Cifrada', desc: 'Conserva firmas locales con AES-256 de los 50 investigadores mas frecuentes para autorizar entradas sin contactar la nube.' },
-              { title: 'Teclado Alternativo', desc: 'Un teclado fisico de respaldo permite ingreso controlado mediante codigo OTP de un solo uso para operarios calificados.' },
-              { title: 'Rele Normalmente Cerrado', desc: 'La bobina posee un capacitor de estado solido que mantiene liberada la cerradura si se decreta contingencia critica.' },
+              { title: 'Teclado Alternativo', desc: 'Un teclado físico de respaldo permite ingreso controlado mediante código OTP de un solo uso para operarios calificados.' },
+              { title: 'Relé Normalmente Cerrado', desc: 'La bobina posee un capacitor de estado sólido que mantiene liberada la cerradura si se decreta contingencia crítica.' },
             ].map((item, i) => (
               <div key={i} className="p-6 bg-zinc-900 rounded-2xl border border-zinc-800 space-y-3">
                 <div className="w-8 h-8 rounded-xl bg-accent-950/50 border border-accent-800/30 flex items-center justify-center">

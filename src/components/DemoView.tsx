@@ -156,13 +156,13 @@ export default function DemoView() {
         COMPROBANTE DE ENTRADA - FACEACCESS LAB
 =============================================
 Dispositivo: Terminal Kiosk #042
-Ubicacion: Edificio de Computacion, Lab-02
+Ubicación: Edificio de Computación, Lab-02
 Servidor Cloud: AWS Virginia (us-east-1)
 Fecha: Oct 24, 2024
 Resultados:
   - Estudiante: ${selectedStudent.name}
   - Especialidad: ${selectedStudent.career}
-  - Coincidencia Biometrica: ${selectedStudent.status === 'allowed' ? simulatedMatchPct : '22.8'}%
+  - Coincidencia Biométrica: ${selectedStudent.status === 'allowed' ? simulatedMatchPct : '22.8'}%
   - Estado Cerradura: DESBLOQUEADA
 =============================================
 MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
@@ -310,10 +310,10 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
               <div className="flex flex-col gap-5 h-full justify-between">
                 <div>
                   <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-lg uppercase font-semibold inline-block">
-                    Estado de verificacion
+                    Estado de verificación
                   </span>
                   <h2 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight mt-3">
-                    {flowState === 'idle' ? 'Inicio de Lectura' : 'Procesando Biometria'}
+                    {flowState === 'idle' ? 'Inicio de Lectura' : 'Procesando Biometría'}
                   </h2>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed mt-1.5">
                     Asegurese de mirar directamente a la camara. La imagen no se guarda en discos publicos.
@@ -337,7 +337,7 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                       <p className="text-label text-zinc-400 mt-0.5">
                         {flowState === 'idle' && 'Esperando inicio...'}
                         {flowState === 'scanning' && 'En progreso...'}
-                        {flowState === 'processing' && globalProgress <= 25 && 'Buscando orbita ocular...'}
+                        {flowState === 'processing' && globalProgress <= 25 && 'Buscando órbita ocular...'}
                         {flowState === 'processing' && globalProgress > 25 && 'Rostro localizado.'}
                       </p>
                     </div>
@@ -376,7 +376,7 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                       <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-700 mt-1" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Comparacion biometrica</h4>
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Comparación biométrica</h4>
                       <p className="text-label text-zinc-400 mt-0.5">
                         {globalProgress < 60 && 'Esperando...'}
                         {flowState === 'processing' && currentStepIndex === 2 && 'Mapeando rasgos faciales...'}
@@ -400,7 +400,7 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                       <p className="text-label text-zinc-400 mt-0.5">
                         {globalProgress < 80 && 'Esperando...'}
                         {flowState === 'processing' && currentStepIndex === 3 && 'Validando credencial...'}
-                        {globalProgress >= 100 && 'Permiso academico concedido.'}
+                        {globalProgress >= 100 && 'Permiso académico concedido.'}
                       </p>
                     </div>
                   </div>
@@ -548,7 +548,7 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
                     className="px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                   >
                     <Printer className="w-3.5 h-3.5" weight="regular" />
-                    Bajar Recibo
+                    Bajar recibo
                   </button>
                   <button
                     onClick={() => { setFlowState('idle'); setGlobalProgress(0); setCurrentStepIndex(0); }}
@@ -560,7 +560,7 @@ MANTENGA LA SEGURIDAD DEL CAMPUS EN TODO MOMENTO!
 
                 {selectedStudent.status === 'allowed' && (
                   <div className="bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-400 py-2 px-4 text-center text-label font-mono font-medium">
-                    La cerradura se bloqueara automaticamente en {lockCountdown} segundos.
+                    La cerradura se bloqueará automáticamente en {lockCountdown} segundos.
                   </div>
                 )}
               </div>
