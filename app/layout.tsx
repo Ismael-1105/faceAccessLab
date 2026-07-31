@@ -6,6 +6,10 @@ import Providers from './providers';
 export const metadata: Metadata = {
   title: 'FaceAccess Lab',
   description: 'Sistema inteligente de control de acceso por reconocimiento facial para laboratorios universitarios.',
+  icons: {
+    icon: '/icon.png',
+    apple: '/apple-icon.png',
+  },
 };
 
 export const viewport: Viewport = {
