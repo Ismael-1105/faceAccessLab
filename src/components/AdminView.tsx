@@ -9,10 +9,11 @@ import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, SlidersHorizontal, SignOut,
-  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck, Flask
+  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck, Flask, Scroll
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import { api, getToken } from '../lib/api.ts';
+import { getPhotoSrc } from '../lib/photoUrl.ts';
 import EnrollmentView from './EnrollmentView.tsx';
 import StudentDetailView from './StudentDetailView.tsx';
 import AlertsCenter from './AlertsCenter.tsx';
@@ -20,6 +21,9 @@ import ReportsView from './ReportsView.tsx';
 import EmptyState from './EmptyState.tsx';
 import UsersView from './UsersView.tsx';
 import LabsView from './LabsView.tsx';
+import AuditView from './AuditView.tsx';
+import HealthCard from './HealthCard.tsx';
+import MfaSetup from './MfaSetup.tsx';
 
 export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'arquitectura' } = {}) {
   const {
@@ -30,7 +34,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   } = useApp();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'reports' | 'config'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'audit' | 'reports' | 'config'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'All' | 'Permitido' | 'Denegado'>('All');
   const [logPage, setLogPage] = useState(0);
@@ -106,6 +110,20 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     return parseFloat(((granted / logs.length) * 100).toFixed(1));
   }, [logs]);
 
+  const todayKpis = useMemo(() => {
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const todayLogs = logs.filter(l => l.date === today);
+    const granted = todayLogs.filter(l => l.result === 'Permitido').length;
+    const denied = todayLogs.length - granted;
+    const successRate = todayLogs.length > 0 ? Math.round((granted / todayLogs.length) * 100) : 0;
+    const labUsage = new Map<string, number>();
+    todayLogs.forEach(l => {
+      if (l.kioskId) labUsage.set(l.kioskId, (labUsage.get(l.kioskId) || 0) + 1);
+    });
+    const topKiosk = [...labUsage.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { accessesToday: todayLogs.length, granted, denied, successRate, topKiosk: topKiosk?.[0] || null };
+  }, [logs]);
+
   useEffect(() => {
     setLogPage(0);
   }, [searchQuery, logFilter]);
@@ -115,7 +133,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'reports' | 'config';
+  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'audit' | 'reports' | 'config';
   const isAdmin = user?.role === 'admin';
   const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
     { tab: 'overview', icon: Heartbeat, label: 'Vista General' },
@@ -125,6 +143,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     ...(isAdmin ? [
       { tab: 'users' as const, icon: UserCheck, label: 'Docentes' },
       { tab: 'labs' as const, icon: Flask, label: 'Laboratorios' },
+      { tab: 'audit' as const, icon: Scroll, label: 'Auditoría' },
     ] : []),
   ];
 
@@ -235,6 +254,30 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 </div>
               ))}
             </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Escaneos hoy</span>
+                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{todayKpis.accessesToday}</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Permitidos</span>
+                <p className="text-2xl font-black text-green-600 dark:text-green-400 mt-1">{todayKpis.granted}</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Denegados</span>
+                <p className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">{todayKpis.denied}</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">% Éxito</span>
+                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{todayKpis.successRate}%</p>
+                <p className="text-label text-zinc-400 dark:text-zinc-500 mt-0.5">
+                  {todayKpis.topKiosk ? `Kiosco más usado: ${todayKpis.topKiosk}` : 'Sin actividad'}
+                </p>
+              </div>
+            </div>
+
+            <HealthCard />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Bar chart */}
@@ -414,7 +457,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                         <td className="p-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex-shrink-0 flex items-center justify-center relative">
-                              <img className="w-full h-full object-cover" alt={student.name} src={student.photoUrl} onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }} />
+                              <img className="w-full h-full object-cover" alt={student.name} src={getPhotoSrc(student.photoUrl)} onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }} />
                               <span className="absolute text-xs font-bold text-zinc-400">{student.avatarInitials}</span>
                             </div>
                             <div>
@@ -582,6 +625,10 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
           <LabsView />
         )}
 
+        {activeTab === 'audit' && isAdmin && (
+          <AuditView />
+        )}
+
         {/* ========== REPORTS ========== */}
         {activeTab === 'reports' && (
           <ReportsView logs={logs} />
@@ -693,6 +740,8 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 </div>
               )}
             </div>
+
+            <MfaSetup />
           </div>
         )}
 

@@ -95,6 +95,7 @@ export default function KioscoPage() {
             scannedStudent={kiosk.scannedStudent}
             confidence={kiosk.confidence}
             resetCountdown={kiosk.resetCountdown}
+            consecutiveDenials={kiosk.consecutiveDenials}
             onPrintReceipt={kiosk.handlePrintReceipt}
           />
         </div>

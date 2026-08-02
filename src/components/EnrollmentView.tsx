@@ -7,14 +7,17 @@ import {
 } from '@phosphor-icons/react';
 import type { Student, Career } from '../types.ts';
 import { CAREERS } from '../types.ts';
-import { api } from '../lib/api.ts';
+import { api, getToken } from '../lib/api.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
 async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url: string; key: string } | null> {
   try {
     const res = await fetch('/api/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
       body: JSON.stringify({ imageBase64, studentId }),
     });
     const data = await res.json();
@@ -246,7 +249,10 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
 
       const rekogRes = await fetch('/api/rekognition/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        },
         body: JSON.stringify({ studentId, imageBase64: capturedImage }),
       });
       const rekogData = await rekogRes.json();

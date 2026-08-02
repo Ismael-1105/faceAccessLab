@@ -44,6 +44,16 @@ export function getTokenFromRequest(req: Request): string | null {
   return null;
 }
 
+export function getAuthPayload(req: Request): TokenPayload | null {
+  const token = getTokenFromRequest(req);
+  if (!token) return null;
+  try {
+    return verifyToken(token);
+  } catch {
+    return null;
+  }
+}
+
 export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,

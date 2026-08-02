@@ -93,6 +93,7 @@ export interface AccessLog {
   time: string;
   result: 'Permitido' | 'Denegado';
   similarity: number;
+  kioskId?: string;
 }
 
 export interface CloudService {
@@ -133,6 +134,38 @@ export interface Lab {
   description?: string;
   active: boolean;
   createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor: string;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  details?: string;
+  createdAt: string;
+}
+
+export interface SystemHealth {
+  ok: boolean;
+  timestamp: string;
+  mongo: {
+    connected: boolean;
+    counts?: { users: number; students: number; logs: number; alerts: number; labs: number };
+    error?: string;
+  };
+  cloudwatch: {
+    ok: boolean;
+    metrics?: Record<string, number>;
+    error?: string;
+  };
+  aws: {
+    configured: boolean;
+    region: string;
+    s3Bucket: string | null;
+    snsTopic: boolean;
+  };
 }
 
 export interface Alert {

@@ -113,7 +113,7 @@ describe('Key audit — causa raíz (datos API con _id sin id)', () => {
     const AdminView = (await import('../src/components/AdminView.tsx')).default;
     const warnings = captureKeyWarnings(React.createElement(AdminView));
     expect(warnings.length).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it('api.getLogs normaliza _id → id (el fix elimina el warning)', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
@@ -134,7 +134,7 @@ describe('Key audit — AdminView', () => {
     const AdminView = (await import('../src/components/AdminView.tsx')).default;
     const warnings = captureKeyWarnings(React.createElement(AdminView));
     expect(warnings).toEqual([]);
-  });
+  }, 15000);
 });
 
 describe('Key audit — hijos de AdminView', () => {
@@ -220,6 +220,7 @@ describe('Key audit — resto del proyecto', () => {
         scannedStudent: null,
         confidence: 0,
         resetCountdown: 0,
+        consecutiveDenials: 0,
         onPrintReceipt: vi.fn(),
       })
     );

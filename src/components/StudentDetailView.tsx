@@ -9,6 +9,7 @@ import {
 import type { Student, AccessLog } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 import EmptyState from './EmptyState.tsx';
+import { getPhotoSrc } from '../lib/photoUrl.ts';
 
 interface StudentDetailViewProps {
   student: Student;
@@ -207,7 +208,7 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
             {/* Avatar */}
             <div className="w-20 h-20 md:w-[88px] md:h-[88px] rounded-2xl overflow-hidden bg-zinc-200 dark:bg-zinc-700 ring-[3px] ring-white dark:ring-zinc-900 shadow-lg flex-shrink-0">
               <img
-                src={student.photoUrl}
+                src={getPhotoSrc(student.photoUrl)}
                 alt={`Foto de ${student.name}`}
                 className="w-full h-full object-cover"
                 onError={e => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}

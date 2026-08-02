@@ -4,12 +4,21 @@ import { hashPassword, comparePassword, generateToken, verifyToken, getTokenFrom
 import { v4 as uuidv4 } from 'uuid';
 import { deleteImage } from './s3.ts';
 import { deleteFace } from './rekognition.ts';
+import {
+  studentCreateSchema,
+  userCreateSchema,
+  userUpdateSchema,
+  labCreateSchema,
+  labUpdateSchema,
+} from './validation.ts';
+import { recordAudit, getAuditLogs } from './audit.ts';
 
 export async function handleLogin(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  const { verifyTotp } = await import('./totp.ts');
   await connectDB();
 
-  const { email, password } = await req.json() as { email?: string; password?: string };
+  const { email, password, mfaToken } = await req.json() as { email?: string; password?: string; mfaToken?: string };
   if (!email || !password) {
     return errorResponse('Email y contraseña son requeridos', 400);
   }
@@ -22,6 +31,22 @@ export async function handleLogin(req: Request): Promise<Response> {
   const validPassword = await comparePassword(password, user.passwordHash);
   if (!validPassword) {
     return errorResponse('Credenciales inválidas', 401);
+  }
+
+  // Si el usuario tiene MFA habilitado, se exige el código antes de emitir el token.
+  if (user.mfaEnabled) {
+    if (!mfaToken || !user.mfaSecret || !verifyTotp(user.mfaSecret, mfaToken)) {
+      return jsonResponse({
+        mfaRequired: true,
+        user: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          studentId: user.studentId,
+        },
+      });
+    }
   }
 
   const token = generateToken({
@@ -106,19 +131,21 @@ export async function handleGetUsers(req: Request): Promise<Response> {
 
 export async function handleCreateUser(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  let actor;
   try {
-    await requireAdmin(req);
+    actor = await requireAdmin(req);
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
 
-  const { email, password, name } = await req.json() as {
-    email?: string; password?: string; name?: string;
-  };
+  const body = await req.json() as Record<string, unknown>;
 
-  if (!email || !password || !name) {
-    return errorResponse('Email, contraseña y nombre son requeridos', 400);
+  const parsed = userCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return errorResponse(first ? first.message : 'Datos inválidos', 400);
   }
+  const { email, password, name } = parsed.data;
 
   const existing = await User.findOne({ email: email.toLowerCase() });
   if (existing) {
@@ -127,6 +154,15 @@ export async function handleCreateUser(req: Request): Promise<Response> {
 
   const passwordHash = await hashPassword(password);
   const user = await User.create({ email: email.toLowerCase(), passwordHash, name, role: 'docente' });
+
+  await recordAudit({
+    actor: actor.email,
+    actorEmail: actor.email,
+    action: 'user.create',
+    targetType: 'user',
+    targetId: String(user._id),
+    details: `Creado docente ${name} (${email})`,
+  });
 
   return jsonResponse({
     user: {
@@ -148,18 +184,23 @@ export async function handleUpdateUser(req: Request): Promise<Response> {
   }
 
   await connectDB();
-  const { id, email, password, name } = await req.json() as {
-    id?: string; email?: string; password?: string; name?: string;
-  };
+  const body = await req.json() as Record<string, unknown>;
+
+  const parsed = userUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return errorResponse(first ? first.message : 'Datos inválidos', 400);
+  }
+  const { id, email, password, name } = parsed.data;
 
   if (!id) {
     return errorResponse('ID del docente requerido', 400);
   }
 
   const updates: { email?: string; name?: string; passwordHash?: string } = {};
-  if (email && typeof email === 'string') updates.email = email.toLowerCase();
-  if (name && typeof name === 'string') updates.name = name;
-  if (password && typeof password === 'string') updates.passwordHash = await hashPassword(password);
+  if (email) updates.email = email.toLowerCase();
+  if (name) updates.name = name;
+  if (password) updates.passwordHash = await hashPassword(password);
 
   if (Object.keys(updates).length === 0) {
     return errorResponse('No hay cambios para aplicar', 400);
@@ -183,8 +224,9 @@ export async function handleUpdateUser(req: Request): Promise<Response> {
 
 export async function handleDeleteUser(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  let actor;
   try {
-    await requireAdmin(req);
+    actor = await requireAdmin(req);
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
@@ -200,6 +242,15 @@ export async function handleDeleteUser(req: Request): Promise<Response> {
   if (!deleted) {
     return errorResponse('Docente no encontrado', 404);
   }
+
+  await recordAudit({
+    actor: actor.email,
+    actorEmail: actor.email,
+    action: 'user.delete',
+    targetType: 'user',
+    targetId: id,
+    details: `Eliminado docente ${deleted.name} (${deleted.email})`,
+  });
 
   return jsonResponse({ ok: true, message: 'Docente eliminado' });
 }
@@ -227,20 +278,22 @@ export async function handleGetLabs(req: Request): Promise<Response> {
 
 export async function handleCreateLab(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  let actor;
   try {
-    await requireAdmin(req);
+    actor = await requireAdmin(req);
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
 
   await connectDB();
-  const { name, code, description, active } = await req.json() as {
-    name?: string; code?: string; description?: string; active?: boolean;
-  };
+  const body = await req.json() as Record<string, unknown>;
 
-  if (!name || !code) {
-    return errorResponse('Nombre y código del laboratorio son requeridos', 400);
+  const parsed = labCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return errorResponse(first ? first.message : 'Datos inválidos', 400);
   }
+  const { name, code, description, active } = parsed.data;
 
   const normalizedCode = String(code).toUpperCase().trim();
   const existing = await Lab.findOne({ code: normalizedCode });
@@ -254,6 +307,15 @@ export async function handleCreateLab(req: Request): Promise<Response> {
     code: normalizedCode,
     description: description?.trim() || undefined,
     active: active ?? true,
+  });
+
+  await recordAudit({
+    actor: actor.email,
+    actorEmail: actor.email,
+    action: 'lab.create',
+    targetType: 'lab',
+    targetId: lab.id,
+    details: `Creado laboratorio ${lab.name} (${lab.code})`,
   });
 
   return jsonResponse({
@@ -277,17 +339,22 @@ export async function handleUpdateLab(req: Request): Promise<Response> {
   }
 
   await connectDB();
-  const { id, name, code, description, active } = await req.json() as {
-    id?: string; name?: string; code?: string; description?: string; active?: boolean;
-  };
+  const body = await req.json() as Record<string, unknown>;
+
+  const parsed = labUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return errorResponse(first ? first.message : 'Datos inválidos', 400);
+  }
+  const { id, name, code, description, active } = parsed.data;
 
   if (!id) {
     return errorResponse('ID del laboratorio requerido', 400);
   }
 
   const updates: { name?: string; code?: string; description?: string; active?: boolean } = {};
-  if (name && typeof name === 'string') updates.name = name.trim();
-  if (code && typeof code === 'string') updates.code = String(code).toUpperCase().trim();
+  if (name) updates.name = name.trim();
+  if (code) updates.code = String(code).toUpperCase().trim();
   if (typeof description === 'string') updates.description = description.trim() || undefined;
   if (typeof active === 'boolean') updates.active = active;
 
@@ -314,8 +381,9 @@ export async function handleUpdateLab(req: Request): Promise<Response> {
 
 export async function handleDeleteLab(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
+  let actor;
   try {
-    await requireAdmin(req);
+    actor = await requireAdmin(req);
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
@@ -331,6 +399,15 @@ export async function handleDeleteLab(req: Request): Promise<Response> {
   if (!deleted) {
     return errorResponse('Laboratorio no encontrado', 404);
   }
+
+  await recordAudit({
+    actor: actor.email,
+    actorEmail: actor.email,
+    action: 'lab.delete',
+    targetType: 'lab',
+    targetId: id,
+    details: `Eliminado laboratorio ${deleted.name} (${deleted.code})`,
+  });
 
   return jsonResponse({ ok: true, message: 'Laboratorio eliminado' });
 }
@@ -370,9 +447,17 @@ export async function handleCreateStudent(req: Request): Promise<Response> {
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
+
+  const parsed = studentCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return errorResponse(first ? first.message : 'Datos inválidos', 400);
+  }
+  const data = parsed.data;
+
   const student = await Student.create({
-    ...body,
-    id: (body.id as string) || `student-${uuidv4().slice(0, 8)}`,
+    ...data,
+    id: data.id || `student-${uuidv4().slice(0, 8)}`,
   });
   return jsonResponse(student, 201);
 }
@@ -585,7 +670,9 @@ export async function handleCreateLogPublic(req: Request): Promise<Response> {
       createdAt: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
     });
 
-    if (recentDenials >= 3) {
+    const suspicious = recentDenials >= 3;
+
+    if (suspicious) {
       await publishAlert(
         'ALERTA: Accesos denegados repetidos',
         `Se detectaron ${recentDenials} intentos de acceso denegado en los últimos 10 minutos.\nKiosco: ${log.kioskId || 'Kiosk-042'}\nHora: ${log.time} ${log.date}`
@@ -603,4 +690,17 @@ export async function handleCreateLogPublic(req: Request): Promise<Response> {
   }
 
   return jsonResponse(log, 201);
+}
+
+export async function handleGetAuditLogs(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  try {
+    await requireAdmin(req);
+  } catch {
+    return errorResponse('Acceso restringido a administradores', 403);
+  }
+
+  await connectDB();
+  const logs = await getAuditLogs(100);
+  return jsonResponse(logs);
 }

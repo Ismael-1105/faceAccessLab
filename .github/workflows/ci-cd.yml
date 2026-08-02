@@ -36,12 +36,7 @@ jobs:
         run: pnpm lint
 
       - name: Test
-        run: |
-          if [ -n "$(find src -name '*.test.*' -o -name '*.spec.*' 2>/dev/null)" ]; then
-            pnpm test
-          else
-            echo "No test files found, skipping"
-          fi
+        run: pnpm test
 
       - name: Build
         run: pnpm build

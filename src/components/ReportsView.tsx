@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { FileCsv, ChartBar, TrendUp, Users, Clock } from '@phosphor-icons/react';
+import { FileCsv, FileText, ChartBar, TrendUp, Users, Clock } from '@phosphor-icons/react';
 import type { AccessLog } from '../types.ts';
 import { DAILY_STATS } from '../data.ts';
+import { api } from '../lib/api.ts';
 
 interface ReportsViewProps {
   logs: AccessLog[];
@@ -35,6 +36,27 @@ export default function ReportsView({ logs }: ReportsViewProps) {
   const avgSimilarity = logs.length > 0
     ? (logs.reduce((sum, l) => sum + l.similarity, 0) / logs.length).toFixed(1)
     : '0';
+
+  // Tendencias: accesos de esta semana vs la anterior (por permitidos).
+  const weeklyTrend = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfPrevWeek = new Date(startOfWeek);
+    startOfPrevWeek.setDate(startOfWeek.getDate() - 7);
+
+    const inRange = (log: AccessLog, from: Date, to: Date) => {
+      const d = new Date(log.date);
+      return d >= from && d < to;
+    };
+
+    const thisWeek = logs.filter(l => l.result === 'Permitido' && inRange(l, startOfWeek, now)).length;
+    const prevWeek = logs.filter(l => l.result === 'Permitido' && inRange(l, startOfPrevWeek, startOfWeek)).length;
+
+    const pct = prevWeek > 0 ? Math.round(((thisWeek - prevWeek) / prevWeek) * 100) : (thisWeek > 0 ? 100 : 0);
+    return { thisWeek, prevWeek, pct, trend: thisWeek - prevWeek };
+  }, [logs]);
 
   const computedTopStudents = useMemo(() => {
     const map = new Map<string, { accesses: number; similarities: number[] }>();
@@ -96,6 +118,17 @@ export default function ReportsView({ logs }: ReportsViewProps) {
     document.body.removeChild(a);
   };
 
+  const [exportError, setExportError] = useState('');
+
+  const handleExportReport = async () => {
+    setExportError('');
+    try {
+      await api.downloadReport();
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'No se pudo generar el reporte');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -104,6 +137,11 @@ export default function ReportsView({ logs }: ReportsViewProps) {
           <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Métricas de acceso, tendencias y exportación de datos.</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={handleExportReport}
+            className="px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
+            <FileText className="w-4 h-4" weight="regular" />
+            Exportar reporte
+          </button>
           <button onClick={handleExportCSV}
             className="px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
             <FileCsv className="w-4 h-4" weight="regular" />
@@ -111,6 +149,12 @@ export default function ReportsView({ logs }: ReportsViewProps) {
           </button>
         </div>
       </div>
+
+      {exportError && (
+        <div role="alert" className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-700 dark:text-red-300 font-medium">{exportError}</p>
+        </div>
+      )}
 
       {/* Period selector */}
       <div className="flex gap-2">
@@ -262,6 +306,30 @@ export default function ReportsView({ logs }: ReportsViewProps) {
               <p className="text-sm font-black text-zinc-900 dark:text-white mt-0.5">{value}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Tendencia semanal */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
+        <div className="mb-4">
+          <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Tendencia semanal</h4>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Accesos permitidos comparados con la semana anterior.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+            <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">Esta semana</p>
+            <p className="text-sm font-black text-zinc-900 dark:text-white mt-0.5">{weeklyTrend.thisWeek}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+            <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">Semana anterior</p>
+            <p className="text-sm font-black text-zinc-900 dark:text-white mt-0.5">{weeklyTrend.prevWeek}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800">
+            <p className="text-label font-semibold text-zinc-400 dark:text-zinc-500 uppercase">Variación</p>
+            <p className={`text-sm font-black mt-0.5 ${weeklyTrend.trend > 0 ? 'text-green-600 dark:text-green-400' : weeklyTrend.trend < 0 ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-white'}`}>
+              {weeklyTrend.trend > 0 ? '+' : ''}{weeklyTrend.pct}%
+            </p>
+          </div>
         </div>
       </div>
     </div>

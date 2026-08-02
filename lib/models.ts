@@ -6,6 +6,9 @@ export interface IUser extends Document {
   name: string;
   role: 'admin' | 'docente' | 'estudiante';
   studentId?: string;
+  mfaEnabled: boolean;
+  mfaSecret?: string;
+  mfaVerifiedAt?: Date;
   createdAt: Date;
 }
 
@@ -58,12 +61,25 @@ export interface ILab extends Document {
   createdAt: Date;
 }
 
+export interface IAuditLog extends Document {
+  actor: string;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  details?: string;
+  createdAt: Date;
+}
+
 const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, lowercase: true },
   passwordHash: { type: String, required: true },
   name: { type: String, required: true },
   role: { type: String, enum: ['admin', 'docente', 'estudiante'], required: true },
   studentId: { type: String },
+  mfaEnabled: { type: Boolean, default: false },
+  mfaSecret: { type: String },
+  mfaVerifiedAt: { type: Date },
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -98,6 +114,11 @@ const AccessLogSchema = new Schema<IAccessLog>({
   createdAt: { type: Date, default: Date.now },
 });
 
+AccessLogSchema.index({ studentId: 1, createdAt: -1 });
+AccessLogSchema.index({ createdAt: -1 });
+AccessLogSchema.index({ result: 1, createdAt: -1 });
+AccessLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 90 });
+
 const AlertSchema = new Schema<IAlert>({
   severity: { type: String, enum: ['critical', 'warning', 'info'], required: true },
   source: { type: String, required: true },
@@ -106,6 +127,8 @@ const AlertSchema = new Schema<IAlert>({
   status: { type: String, enum: ['active', 'acknowledged', 'resolved'], default: 'active' },
   createdAt: { type: Date, default: Date.now },
 });
+
+AlertSchema.index({ status: 1, createdAt: -1 });
 
 const LabSchema = new Schema<ILab>({
   id: { type: String, required: true, unique: true },
@@ -116,8 +139,23 @@ const LabSchema = new Schema<ILab>({
   createdAt: { type: Date, default: Date.now },
 }, { id: false });
 
+const AuditLogSchema = new Schema<IAuditLog>({
+  actor: { type: String, required: true },
+  actorEmail: { type: String, required: true },
+  action: { type: String, required: true },
+  targetType: { type: String, required: true },
+  targetId: { type: String },
+  details: { type: String },
+  createdAt: { type: Date, default: Date.now },
+});
+
+AuditLogSchema.index({ actorEmail: 1, createdAt: -1 });
+AuditLogSchema.index({ targetType: 1, createdAt: -1 });
+AuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 });
+
 export const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Student = mongoose.models.Student || mongoose.model<IStudent>('Student', StudentSchema);
 export const AccessLog = mongoose.models.AccessLog || mongoose.model<IAccessLog>('AccessLog', AccessLogSchema);
 export const Alert = mongoose.models.Alert || mongoose.model<IAlert>('Alert', AlertSchema);
 export const Lab = mongoose.models.Lab || mongoose.model<ILab>('Lab', LabSchema);
+export const AuditLog = mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);

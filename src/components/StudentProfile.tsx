@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { ArrowLeft, Fingerprint, CheckCircle, XCircle, SignIn } from '@phosphor-icons/react';
 import { Student, AccessLog } from '../types.ts';
+import { getPhotoSrc } from '../lib/photoUrl.ts';
 
 interface StudentProfileProps {
   student: Student;
@@ -59,7 +60,7 @@ export default function StudentProfile({ student, logs, onBack }: StudentProfile
                 <img
                   className="w-full h-full object-cover"
                   alt={student.name}
-                  src={student.photoUrl}
+                  src={getPhotoSrc(student.photoUrl)}
                   onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}
                 />
                 <span className="absolute text-3xl font-bold text-zinc-400">{student.avatarInitials}</span>

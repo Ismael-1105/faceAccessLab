@@ -1,9 +1,9 @@
 import { searchFace } from '@/lib/rekognition';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   const ip = req.headers.get('x-forwarded-for') || 'unknown';
-  if (!checkRateLimit(`rekognition:${ip}`, 10)) {
+  if (!checkRateLimit(`rekognition:${ip}`, RATE_LIMITS.compare)) {
     return new Response(JSON.stringify({ error: 'Demasiadas solicitudes. Espera un minuto.' }), {
       status: 429,
       headers: { 'Content-Type': 'application/json' },

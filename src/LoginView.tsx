@@ -13,6 +13,8 @@ export default function LoginView() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,7 +25,14 @@ export default function LoginView() {
     setLoading(true);
 
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(email, password, mfaRequired ? mfaCode : undefined);
+
+      if (result.mfaRequired) {
+        setMfaRequired(true);
+        setError('');
+        return;
+      }
+
       setToken(result.token);
       handleLogin({
         id: result.user.id,
@@ -88,6 +97,19 @@ export default function LoginView() {
               </div>
             </div>
 
+            {mfaRequired && (
+              <div>
+                <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">Código de verificación (MFA)</label>
+                <input
+                  type="text" inputMode="numeric" autoComplete="one-time-code"
+                  value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  required placeholder="••••••"
+                  className="w-full text-sm p-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all text-center tracking-[0.5em] font-mono"
+                />
+                <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1.5">Ingresa el código de 6 dígitos de tu aplicación autenticadora.</p>
+              </div>
+            )}
+
             {error && (
               <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-caption text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">
                 {error}
@@ -99,7 +121,7 @@ export default function LoginView() {
               disabled={loading}
               className="w-full bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold py-3 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-50"
             >
-              {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
+              {loading ? 'Verificando...' : mfaRequired ? 'Verificar código' : 'Iniciar sesión'}
             </button>
 
             <Link href="/recuperar" className="block w-full text-center text-caption font-semibold text-zinc-400 dark:text-zinc-500 hover:text-accent-600 dark:hover:text-accent-400 transition-all">

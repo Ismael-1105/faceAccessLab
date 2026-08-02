@@ -1,14 +1,18 @@
 export interface CaptureOptions {
   format?: string;
   quality?: number;
+  maxWidth?: number;
 }
+
+const DEFAULT_MAX_WIDTH = 640;
 
 export function captureFrame(
   videoEl: HTMLVideoElement,
   options: CaptureOptions = {}
 ): string | null {
   const format = options.format || 'image/jpeg';
-  const quality = options.quality ?? 0.9;
+  const quality = options.quality ?? 0.7;
+  const maxWidth = options.maxWidth ?? DEFAULT_MAX_WIDTH;
 
   if (!videoEl) {
     console.warn('[Capture] No video element');
@@ -25,9 +29,11 @@ export function captureFrame(
     return null;
   }
 
+  // Downsample: limitar el ancho para reducir payload y latencia.
+  const scale = Math.min(1, maxWidth / videoEl.videoWidth);
   const canvas = document.createElement('canvas');
-  canvas.width = videoEl.videoWidth;
-  canvas.height = videoEl.videoHeight;
+  canvas.width = Math.round(videoEl.videoWidth * scale);
+  canvas.height = Math.round(videoEl.videoHeight * scale);
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) {
@@ -35,7 +41,7 @@ export function captureFrame(
     return null;
   }
 
-  ctx.drawImage(videoEl, 0, 0);
+  ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
   const dataUrl = canvas.toDataURL(format, quality);
 
   console.log(`[Capture] Frame captured: ${canvas.width}x${canvas.height}, quality=${quality}, ${(dataUrl.length / 1024).toFixed(0)}KB`);
@@ -47,7 +53,7 @@ export async function captureBurst(
   count = 3,
   intervalMs = 300,
   format = 'image/jpeg',
-  quality = 0.85
+  quality = 0.7
 ): Promise<string[]> {
   const frames: string[] = [];
 

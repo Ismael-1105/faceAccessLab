@@ -36,6 +36,8 @@ export interface KioskFlow {
   holdProgress: number;
   /** Segundos que faltan para volver solo a la pantalla de espera. */
   resetCountdown: number;
+  /** Intentos fallidos consecutivos; ≥5 aplica un bloqueo temporal extendido. */
+  consecutiveDenials: number;
   cameras: MediaDeviceInfo[];
   showSettings: boolean;
   selectedCamera: string;
@@ -83,6 +85,7 @@ export function useKioskFlow(): KioskFlow {
   const [scanProgress, setScanProgress] = useState(0);
   const [denialReason, setDenialReason] = useState<DenialReason | null>(null);
   const [resetCountdown, setResetCountdown] = useState(0);
+  const [consecutiveDenials, setConsecutiveDenials] = useState(0);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -204,7 +207,14 @@ export function useKioskFlow(): KioskFlow {
     setDenialReason(reason);
     setScanProgress(1);
     setFlow('result');
-    setResetCountdown(Math.round(RESET_MS.denied / 1000));
+    // Bloqueo temporal: 3 fallos consecutivos de liveness/red = 15s; 5+ = 30s (comportamiento sospechoso).
+    setConsecutiveDenials(prev => {
+      const next = prev + 1;
+      const base = Math.round(RESET_MS.denied / 1000);
+      const penalty = next >= 5 ? 30 : next >= 3 ? 15 : 0;
+      setResetCountdown(base + penalty);
+      return next;
+    });
     saveAccessLog(student, conf, false);
     playCue('denied');
     console.log(`[Kiosk] ACCESO DENEGADO: ${DENIAL_REASONS[reason].code} ${DENIAL_REASONS[reason].title}`);
@@ -260,7 +270,7 @@ export function useKioskFlow(): KioskFlow {
     setScanProgress(0);
 
     const video = videoRef.current;
-    const frame = frameArg || (video ? captureFrame(video, { quality: 0.9 }) : null);
+    const frame = frameArg || (video ? captureFrame(video) : null);
     if (!frame) {
       finishDenied('capture-failed', 0);
       return;
@@ -325,6 +335,7 @@ export function useKioskFlow(): KioskFlow {
     setLivenessSessionId(null);
     setScanProgress(0);
     setResetCountdown(0);
+    setConsecutiveDenials(0);
     goToStage('capture');
     setFlow(cameraDenied || scanBlocked ? 'idle' : 'framing');
   }, [cameraDenied, goToStage, scanBlocked, setFlow]);
@@ -451,6 +462,7 @@ Resultados:
     framing,
     holdProgress,
     resetCountdown,
+    consecutiveDenials,
     cameras,
     showSettings,
     selectedCamera,

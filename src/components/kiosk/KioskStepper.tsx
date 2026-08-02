@@ -2,10 +2,11 @@
 
 import {
   Check, X, Printer, ScanFace, ShieldCheck, Database, LockOpen, Lock, User, Loader2, Radio,
-  ShieldAlert, UserRoundX, Timer,
+  ShieldAlert, UserRoundX, Timer, TriangleAlert,
 } from 'lucide-react';
 import type { Student } from '@/src/types';
 import type { FlowState } from '@/src/hooks/useKioskFlow';
+import { getPhotoSrc } from '@/src/lib/photoUrl';
 import {
   DENIAL_REASONS,
   SCAN_STAGES,
@@ -41,6 +42,7 @@ interface KioskStepperProps {
   scannedStudent: Student | null;
   confidence: number;
   resetCountdown: number;
+  consecutiveDenials: number;
   onPrintReceipt: () => void;
 }
 
@@ -54,6 +56,7 @@ export default function KioskStepper({
   scannedStudent,
   confidence,
   resetCountdown,
+  consecutiveDenials,
   onPrintReceipt,
 }: KioskStepperProps) {
   const denial = denialReason ? DENIAL_REASONS[denialReason] : null;
@@ -155,7 +158,7 @@ export default function KioskStepper({
                 <img
                   className="w-full h-full object-cover"
                   alt={scannedStudent.name}
-                  src={scannedStudent.photoUrl}
+                  src={getPhotoSrc(scannedStudent.photoUrl)}
                   onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}
                 />
               ) : (
@@ -210,6 +213,15 @@ export default function KioskStepper({
                     <span className="text-red-400 text-xs mt-0.5" aria-hidden="true">&rarr;</span>
                     <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">{denial.action}</p>
                   </div>
+                  {consecutiveDenials >= 5 && (
+                    <div className="mt-2 flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 px-3 py-2">
+                      <TriangleAlert className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-xs font-semibold text-red-800 dark:text-red-300 leading-relaxed">
+                        Se han registrado {consecutiveDenials} intentos fallidos consecutivos. El acceso quedará
+                        bloqueado temporalmente durante {resetCountdown > 0 ? resetCountdown : 30} segundos.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -51,10 +51,28 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) =>
-    request<{ token: string; user: { id: string; email: string; name: string; role: string; studentId?: string } }>('/auth/login', {
+  login: (email: string, password: string, mfaToken?: string) =>
+    request<{ token: string; mfaRequired?: boolean; user: { id: string; email: string; name: string; role: string; studentId?: string } }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, mfaToken }),
+    }),
+
+  setupMfa: () =>
+    request<{ ok: boolean; secret: string; qrLabel: string }>('/auth/mfa', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'setup' }),
+    }),
+
+  enableMfa: (token: string) =>
+    request<{ ok: boolean; message: string }>('/auth/mfa', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'verify', token }),
+    }),
+
+  disableMfa: (token: string) =>
+    request<{ ok: boolean; message: string }>('/auth/mfa', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'disable', token }),
     }),
 
   register: (data: { email: string; password: string; name: string; role: string }) =>
@@ -104,6 +122,32 @@ export const api = {
       method: 'DELETE',
       body: JSON.stringify({ id }),
     }),
+
+  getAuditLogs: () =>
+    request<import('../types.ts').AuditLogEntry[]>('/audit'),
+
+  getHealth: () =>
+    request<import('../types.ts').SystemHealth>('/health'),
+
+  downloadReport: async () => {
+    const res = await fetch(`${API_BASE}/reports/summary`, {
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: 'Error al generar reporte' }));
+      throw new Error(body.error || `Error ${res.status}`);
+    }
+    const text = await res.text();
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte-faceaccess-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 
   getStudents: () =>
     request<import('../types.ts').Student[]>('/students'),

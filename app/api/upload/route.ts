@@ -1,7 +1,20 @@
 import { uploadImage } from '@/lib/s3';
 import { v4 as uuidv4 } from 'uuid';
+import { getAuthPayload } from '@/lib/auth';
 
 export async function POST(req: Request) {
+  const auth = getAuthPayload(req);
+  if (!auth) {
+    return new Response(JSON.stringify({ error: 'No autorizado' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (auth.role !== 'admin' && auth.role !== 'docente') {
+    return new Response(JSON.stringify({ error: 'Acceso restringido' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const { imageBase64, studentId } = await req.json() as {
       imageBase64?: string;

@@ -1,5 +1,5 @@
 import { handleLogin } from '@/lib/handlers';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function OPTIONS() {
   return new Response(null, {
@@ -14,7 +14,7 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   const ip = req.headers.get('x-forwarded-for') || 'unknown';
-  if (!checkRateLimit(`login:${ip}`, 5)) {
+  if (!checkRateLimit(`login:${ip}`, RATE_LIMITS.login)) {
     return new Response(JSON.stringify({ error: 'Demasiados intentos. Espera un minuto.' }), {
       status: 429,
       headers: { 'Content-Type': 'application/json' },
