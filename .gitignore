@@ -5,6 +5,9 @@ build/
 coverage/
 *.log
 
+# Runtime wasm de MediaPipe, se regenera con scripts/copy-mediapipe-wasm.mjs
+public/mediapipe/
+
 .env
 .env.local
 .env.production

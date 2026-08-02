@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['**/__key_audit__.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'node',
   },
 });

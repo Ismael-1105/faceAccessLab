@@ -244,6 +244,12 @@ body {
   pointer-events: none;
 }
 
+/* El color del óvalo indica la calidad del encuadre, sin saltos bruscos */
+.biometric-mask ellipse,
+.biometric-mask rect {
+  transition: stroke 200ms ease-out;
+}
+
 .biometric-mask .mask-ellipse {
   animation: pulse-slow 2.5s ease-in-out infinite;
 }

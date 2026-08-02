@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-mediapipe-wasm.mjs",
     "dev": "next dev --port 3000",
+    "prebuild": "node scripts/copy-mediapipe-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -24,6 +26,7 @@
     "@aws-sdk/client-sts": "^3.1100.0",
     "@aws-sdk/lib-storage": "^3.1099.0",
     "@aws-sdk/s3-request-presigner": "^3.1099.0",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/postcss": "^4.3.3",
     "aws-amplify": "^6.20.0",

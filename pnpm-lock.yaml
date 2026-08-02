@@ -35,6 +35,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1099.0
         version: 3.1099.0
+      '@mediapipe/tasks-vision':
+        specifier: ^1.0.1
+        version: 1.0.1
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -993,6 +996,9 @@ packages:
 
   '@mediapipe/face_detection@0.4.1646425229':
     resolution: {integrity: sha512-aeCN+fRAojv9ch3NXorP6r5tcGVLR3/gC1HmtqB0WEZBRXrdP6/3W/sGR0dHr1iT6ueiK95G9PVjbzFosf/hrg==}
+
+  '@mediapipe/tasks-vision@1.0.1':
+    resolution: {integrity: sha512-rvRE2FmAZ6ZxKSw7wq+e+jQDpN3t1B/tD2mJz9SmAzb1msoDkd4dMoE4wAh8Z30Um0PQwLiHr9QtomhmXk3aUQ==}
 
   '@mongodb-js/saslprep@1.4.13':
     resolution: {integrity: sha512-E3Sv4eCYAlKYUTx8S3ioQcDUscOif+8zZ5OnW1IzJ+Tt+EO+ke8mn+Y3FX6N1H79picwbdOavVOb1jPi2EOyrg==}
@@ -4196,6 +4202,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@mediapipe/face_detection@0.4.1646425229': {}
+
+  '@mediapipe/tasks-vision@1.0.1': {}
 
   '@mongodb-js/saslprep@1.4.13':
     dependencies:

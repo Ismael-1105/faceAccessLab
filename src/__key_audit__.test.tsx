@@ -212,11 +212,14 @@ describe('Key audit — resto del proyecto', () => {
     const warnings = captureKeyWarnings(
       React.createElement(KioskStepper, {
         flowState: 'scanning',
-        activeStep: 'verifying',
-        statusMessage: 'Analizando biometría',
-        isAllowed: false,
+        activeStage: 'compare',
+        statusMessage: 'Comparando registros',
+        statusHint: 'Buscando tu rostro en el índice biométrico',
+        isSuccess: false,
+        denialReason: null,
         scannedStudent: null,
         confidence: 0,
+        resetCountdown: 0,
         onPrintReceipt: vi.fn(),
       })
     );

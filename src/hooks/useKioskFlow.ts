@@ -3,8 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Student, AccessLog } from '@/src/types';
 import { captureFrame } from '@/lib/capture';
+import { useFaceFraming, type FaceFraming } from '@/src/hooks/useFaceFraming';
+import { playCue } from '@/src/lib/kiosk-sound';
+import {
+  DENIAL_REASONS,
+  SCAN_STAGES,
+  type DenialReason,
+  type ScanStageId,
+} from '@/src/lib/kiosk-feedback';
 
-export type FlowState = 'idle' | 'detecting' | 'liveness' | 'scanning' | 'result';
+export type FlowState = 'idle' | 'framing' | 'liveness' | 'scanning' | 'result';
 
 export interface KioskFlow {
   students: Student[];
@@ -14,8 +22,20 @@ export interface KioskFlow {
   confidence: number;
   scanBlocked: boolean;
   statusMessage: string;
+  statusHint: string;
   livenessSessionId: string | null;
-  scanStage: number;
+  /** Etapa real en curso dentro del escaneo. */
+  activeStage: ScanStageId;
+  /** Avance del escaneo, de 0 a 1. */
+  scanProgress: number;
+  /** Causa exacta del rechazo, o null si hubo acceso. */
+  denialReason: DenialReason | null;
+  /** Encuadre en vivo: instrucciones de acercarse, alejarse o centrarse. */
+  framing: FaceFraming;
+  /** Avance del tiempo de encuadre estable exigido antes de verificar, de 0 a 1. */
+  holdProgress: number;
+  /** Segundos que faltan para volver solo a la pantalla de espera. */
+  resetCountdown: number;
   cameras: MediaDeviceInfo[];
   showSettings: boolean;
   selectedCamera: string;
@@ -35,6 +55,22 @@ export interface KioskFlow {
   handlePrintReceipt: () => void;
 }
 
+/** Encuadre válido sostenido que se exige antes de iniciar la verificación. */
+const HOLD_MS = 1200;
+/** Cadencia con la que avanza la barra de progreso. */
+const PROGRESS_TICK_MS = 100;
+/** Espera antes del reinicio automático, según el desenlace. */
+const RESET_MS = { granted: 6000, denied: 12000 } as const;
+
+const STAGE_TARGET = Object.fromEntries(
+  SCAN_STAGES.map(s => [s.id, s.progress]),
+) as Record<ScanStageId, number>;
+
+const IDLE_TEXT = {
+  message: 'Colócate frente a la cámara',
+  hint: 'La detección está activa y comienza sola',
+};
+
 export function useKioskFlow(): KioskFlow {
   const [students, setStudents] = useState<Student[]>([]);
   const [cameraDenied, setCameraDenied] = useState(false);
@@ -42,16 +78,19 @@ export function useKioskFlow(): KioskFlow {
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null);
   const [confidence, setConfidence] = useState(0);
   const [scanBlocked, setScanBlocked] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Centra tu rostro frente a la cámara');
   const [livenessSessionId, setLivenessSessionId] = useState<string | null>(null);
-  const [scanStage, setScanStage] = useState(0);
+  const [activeStage, setActiveStage] = useState<ScanStageId>('capture');
+  const [scanProgress, setScanProgress] = useState(0);
+  const [denialReason, setDenialReason] = useState<DenialReason | null>(null);
+  const [resetCountdown, setResetCountdown] = useState(0);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState('');
 
   const scanningRef = useRef(false);
+  const startingRef = useRef(false);
   const flowStateRef = useRef<FlowState>('idle');
-  const detectLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageTargetRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const performScanRef = useRef<(frameArg?: string) => void>(() => {});
@@ -60,6 +99,9 @@ export function useKioskFlow(): KioskFlow {
     flowStateRef.current = s;
     setFlowState(s);
   }, []);
+
+  // El detector solo consume CPU mientras se busca el encuadre.
+  const framing = useFaceFraming(videoRef, flowState === 'framing' && !scanBlocked && !cameraDenied);
 
   const stopWebcam = useCallback(() => {
     if (streamRef.current) {
@@ -86,13 +128,14 @@ export function useKioskFlow(): KioskFlow {
         videoRef.current.srcObject = stream;
       }
       setCameraDenied(false);
+      if (flowStateRef.current === 'idle') setFlow('framing');
       return true;
     } catch (err) {
       console.error('[Kiosk] Error cámara:', err);
       setCameraDenied(true);
       return false;
     }
-  }, []);
+  }, [setFlow]);
 
   const switchCamera = useCallback((deviceId: string) => {
     stopWebcam();
@@ -106,21 +149,30 @@ export function useKioskFlow(): KioskFlow {
   }, []);
 
   const toggleScanBlocked = useCallback(() => {
-    setScanBlocked(prev => !prev);
+    setScanBlocked(prev => {
+      const next = !prev;
+      setFlow(next ? 'idle' : 'framing');
+      return next;
+    });
+  }, [setFlow]);
+
+  /** Fija la etapa en curso y hacia dónde debe avanzar la barra. */
+  const goToStage = useCallback((stage: ScanStageId) => {
+    stageTargetRef.current = STAGE_TARGET[stage];
+    setActiveStage(stage);
   }, []);
 
-  const saveAccessLog = useCallback((student: Student, conf: number) => {
+  const saveAccessLog = useCallback((student: Student | null, conf: number, allowed: boolean) => {
     const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
-    const isAllowed = student.status === 'allowed';
     const log: AccessLog = {
-      id: 'log-' + Math.random().toString(36).substr(2, 9),
-      studentId: student.id,
-      studentName: student.name,
-      avatarInitials: student.avatarInitials,
+      id: 'log-' + Math.random().toString(36).slice(2, 11),
+      studentId: student?.id ?? 'unknown',
+      studentName: student?.name ?? 'No identificado',
+      avatarInitials: student?.avatarInitials ?? '?',
       date: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-      result: isAllowed ? 'Permitido' : 'Denegado',
+      result: allowed ? 'Permitido' : 'Denegado',
       similarity: parseFloat(conf.toFixed(1)),
     };
     fetch('/api/kiosk', {
@@ -130,7 +182,39 @@ export function useKioskFlow(): KioskFlow {
     }).catch(err => console.error('[Kiosk] Error guardando AccessLog:', err));
   }, []);
 
+  /** Cierra el ciclo con acceso concedido. */
+  const finishGranted = useCallback((student: Student, conf: number) => {
+    scanningRef.current = false;
+    setScannedStudent(student);
+    setConfidence(conf);
+    setDenialReason(null);
+    setScanProgress(1);
+    setFlow('result');
+    setResetCountdown(Math.round(RESET_MS.granted / 1000));
+    saveAccessLog(student, conf, true);
+    playCue('granted');
+    console.log(`[Kiosk] ACCESO CONCEDIDO: ${student.name} (${conf.toFixed(1)}%)`);
+  }, [saveAccessLog, setFlow]);
+
+  /** Cierra el ciclo con acceso denegado, guardando la causa real. */
+  const finishDenied = useCallback((reason: DenialReason, conf: number, student: Student | null = null) => {
+    scanningRef.current = false;
+    setScannedStudent(student);
+    setConfidence(conf);
+    setDenialReason(reason);
+    setScanProgress(1);
+    setFlow('result');
+    setResetCountdown(Math.round(RESET_MS.denied / 1000));
+    saveAccessLog(student, conf, false);
+    playCue('denied');
+    console.log(`[Kiosk] ACCESO DENEGADO: ${DENIAL_REASONS[reason].code} ${DENIAL_REASONS[reason].title}`);
+  }, [saveAccessLog, setFlow]);
+
   const startLiveness = useCallback(async () => {
+    if (startingRef.current || scanningRef.current) return;
+    startingRef.current = true;
+    goToStage('liveness');
+
     try {
       const res = await fetch('/api/rekognition/liveness', {
         method: 'POST',
@@ -141,16 +225,18 @@ export function useKioskFlow(): KioskFlow {
       if (data.ok && data.sessionId) {
         setLivenessSessionId(data.sessionId);
         setFlow('liveness');
-        setStatusMessage('Verificación anti-suplantación');
+        playCue('ready');
       } else {
         console.error('[Kiosk] Error creando sesión liveness:', data.error);
-        setStatusMessage('Error iniciando verificación');
+        finishDenied('network-error', 0);
       }
     } catch (err) {
       console.error('[Kiosk] Error creando sesión liveness:', err);
-      setStatusMessage('Error de conexión');
+      finishDenied('network-error', 0);
+    } finally {
+      startingRef.current = false;
     }
-  }, [setFlow]);
+  }, [finishDenied, goToStage, setFlow]);
 
   const handleLivenessSuccess = useCallback((conf: number) => {
     setLivenessSessionId(null);
@@ -160,29 +246,27 @@ export function useKioskFlow(): KioskFlow {
 
   const handleLivenessFail = useCallback((message: string) => {
     setLivenessSessionId(null);
-    setStatusMessage(message || 'Verificación anti-suplantación fallida');
-    setFlow('idle');
-    setTimeout(() => setStatusMessage('Centra tu rostro frente a la cámara'), 3000);
-  }, [setFlow]);
+    console.warn('[Kiosk] Liveness no superado:', message);
+    // Se cierra el ciclo con una causa visible en lugar de volver a la espera,
+    // que era lo que encadenaba reintentos sin explicación alguna.
+    finishDenied('liveness-failed', 0);
+  }, [finishDenied]);
 
   const performScan = useCallback(async (frameArg?: string) => {
     if (scanningRef.current) return;
     scanningRef.current = true;
     setFlow('scanning');
-    setScanStage(0);
+    goToStage('capture');
+    setScanProgress(0);
 
     const video = videoRef.current;
     const frame = frameArg || (video ? captureFrame(video, { quality: 0.9 }) : null);
     if (!frame) {
-      setStatusMessage('No se detectó rostro. Acércate a la cámara.');
-      setFlow('detecting');
-      scanningRef.current = false;
-      setTimeout(() => setStatusMessage('Centra tu rostro frente a la cámara'), 2500);
+      finishDenied('capture-failed', 0);
       return;
     }
 
-    setScanStage(1);
-    setStatusMessage('Verificando identidad...');
+    goToStage('compare');
 
     try {
       const res = await fetch('/api/rekognition/compare', {
@@ -193,77 +277,57 @@ export function useKioskFlow(): KioskFlow {
       const result = await res.json();
       console.log('[Kiosk] Compare:', result.match ? 'match' : 'no-match', 'confidence=', result.confidence, 'studentId=', result.studentId);
 
-      setScanStage(2);
       const finalConfidence = result.confidence || 0;
-      const candidate = result.ok && result.match && result.studentId
-        ? students.find(s => s.id === result.studentId)
-        : undefined;
 
-      if (candidate) {
-        const threshold = candidate.matchPercentage > 0 ? candidate.matchPercentage : 85;
-
-        if (finalConfidence >= threshold) {
-          setScanStage(3);
-          const access = candidate.status === 'allowed';
-          setScannedStudent(candidate);
-          setConfidence(finalConfidence);
-          setFlow('result');
-          scanningRef.current = false;
-          saveAccessLog(candidate, finalConfidence);
-          console.log(`[Kiosk] ${access ? 'ACCESO CONCEDIDO' : 'ACCESO DENEGADO'} — ${candidate.name} (${finalConfidence}%)`);
-          return;
-        }
+      if (!result.ok || !result.match || !result.studentId) {
+        finishDenied('no-match', finalConfidence);
+        return;
       }
 
-      const unknown: Student = {
-        id: 'unknown',
-        name: 'Persona Desconocida',
-        career: 'No Registrado',
-        lab: 'Acceso Denegado',
-        photoUrl: '/images/students/persona-desconocida.jpg',
-        matchPercentage: 22.8,
-        status: 'denied',
-        avatarInitials: '?',
-      };
-      setScannedStudent(unknown);
-      setConfidence(finalConfidence >= 60 ? finalConfidence : 22.8);
-      setFlow('result');
-      scanningRef.current = false;
-      saveAccessLog(unknown, finalConfidence >= 60 ? finalConfidence : 22.8);
-      console.log('[Kiosk] ACCESO DENEGADO — rostro no reconocido');
+      const candidate = students.find(s => s.id === result.studentId);
+      if (!candidate) {
+        // Rekognition reconoció el rostro pero no existe la ficha local.
+        finishDenied('not-enrolled', finalConfidence);
+        return;
+      }
+
+      const threshold = candidate.matchPercentage > 0 ? candidate.matchPercentage : 85;
+      if (finalConfidence < threshold) {
+        // No se revela a quién se parece: serían datos de un tercero.
+        finishDenied('low-confidence', finalConfidence);
+        return;
+      }
+
+      goToStage('authorize');
+
+      if (candidate.status !== 'allowed') {
+        finishDenied('permissions', finalConfidence, candidate);
+        return;
+      }
+
+      finishGranted(candidate, finalConfidence);
     } catch (err) {
       console.error('[Kiosk] Error en compare:', err);
-      setStatusMessage('Error de conexión. Reintentando...');
-      setFlow('detecting');
-      scanningRef.current = false;
-      setTimeout(() => setStatusMessage('Centra tu rostro frente a la cámara'), 3000);
+      finishDenied('network-error', 0);
     }
-  }, [students, saveAccessLog, setFlow]);
+  }, [students, finishDenied, finishGranted, goToStage, setFlow]);
 
   useEffect(() => {
     performScanRef.current = performScan;
   }, [performScan]);
 
-  const detectPresence = useCallback(async () => {
-    if (scanningRef.current || flowStateRef.current !== 'idle' || scanBlocked) return;
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
-
-    console.log('[Kiosk] Presencia detectada — iniciando Face Liveness oficial');
-    setStatusMessage('Rostro detectado. Verificando...');
-    startLiveness();
-  }, [scanBlocked, startLiveness]);
-
   const resetScan = useCallback(() => {
     scanningRef.current = false;
-    setFlow('idle');
+    startingRef.current = false;
     setScannedStudent(null);
     setConfidence(0);
-    setScanBlocked(false);
-    setStatusMessage('Centra tu rostro frente a la cámara');
+    setDenialReason(null);
     setLivenessSessionId(null);
-    setScanStage(0);
-  }, [setFlow]);
+    setScanProgress(0);
+    setResetCountdown(0);
+    goToStage('capture');
+    setFlow(cameraDenied || scanBlocked ? 'idle' : 'framing');
+  }, [cameraDenied, goToStage, scanBlocked, setFlow]);
 
   // Inicialización: estudiantes, cámaras y webcam
   useEffect(() => {
@@ -285,28 +349,43 @@ export function useKioskFlow(): KioskFlow {
     return () => {
       cancelled = true;
       stopWebcam();
-      if (detectLoopRef.current) clearTimeout(detectLoopRef.current);
     };
   }, [startWebcam, stopWebcam]);
 
-  // Loop de detección de presencia
+  // Disparo automático: el encuadre debe sostenerse, no basta un cuadro suelto.
   useEffect(() => {
-    if (flowState !== 'idle' || scanBlocked) return;
+    if (flowState !== 'framing' || scanBlocked) return;
+    if (framing.status !== 'ready' || framing.stableMs < HOLD_MS) return;
+    startLiveness();
+  }, [flowState, scanBlocked, framing.status, framing.stableMs, startLiveness]);
 
-    detectPresence();
-    detectLoopRef.current = setTimeout(function tick() {
-      detectPresence();
-      detectLoopRef.current = setTimeout(tick, 600);
-    }, 600);
+  // Avance de la barra: se acerca a la meta de la etapa sin superarla, porque
+  // el tiempo de respuesta de Rekognition no se conoce de antemano.
+  useEffect(() => {
+    if (flowState !== 'liveness' && flowState !== 'scanning') return;
+    const id = setInterval(() => {
+      setScanProgress(prev => {
+        const target = stageTargetRef.current;
+        if (prev >= target) return prev;
+        return prev + (target - prev) * 0.18;
+      });
+    }, PROGRESS_TICK_MS);
+    return () => clearInterval(id);
+  }, [flowState]);
 
-    return () => {
-      if (detectLoopRef.current) clearTimeout(detectLoopRef.current);
-    };
-  }, [flowState, scanBlocked, detectPresence]);
+  // Reinicio automático del kiosco tras mostrar el desenlace.
+  useEffect(() => {
+    if (flowState !== 'result') return;
+    if (resetCountdown <= 0) {
+      resetScan();
+      return;
+    }
+    const id = setTimeout(() => setResetCountdown(c => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [flowState, resetCountdown, resetScan]);
 
   const handlePrintReceipt = useCallback(() => {
-    if (!scannedStudent) return;
-    const isAllowed = scannedStudent.status === 'allowed';
+    const denial = denialReason ? DENIAL_REASONS[denialReason] : null;
     const text = `
 =============================================
     COMPROBANTE DE ENTRADA - FACEACCESS LAB
@@ -315,27 +394,46 @@ Dispositivo: Terminal Kiosk #042
 Ubicacion: Edificio de Computacion
 Fecha: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
 Resultados:
-  - Estudiante: ${scannedStudent.name}
-  - Carrera: ${scannedStudent.career}
-  - Coincidencia: ${isAllowed ? confidence : '22.8'}%
-  - Estado: ${isAllowed ? 'ACCESO CONCEDIDO' : 'ACCESO DENEGADO'}
+  - Estudiante: ${scannedStudent?.name ?? 'No identificado'}
+  - Carrera: ${scannedStudent?.career ?? 'No aplica'}
+  - Coincidencia: ${confidence.toFixed(1)}%
+  - Estado: ${denial ? 'ACCESO DENEGADO' : 'ACCESO CONCEDIDO'}${denial ? `
+  - Motivo: ${denial.code} ${denial.title}` : ''}
 =============================================
 `;
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FaceAccess_Recibo_${scannedStudent.id}.txt`;
+    a.download = `FaceAccess_Recibo_${scannedStudent?.id ?? 'desconocido'}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [scannedStudent, confidence]);
+    URL.revokeObjectURL(url);
+  }, [confidence, denialReason, scannedStudent]);
 
-  const isAllowed = scannedStudent?.status === 'allowed';
-  const isError = flowState === 'result' && !isAllowed;
-  const isSuccess = flowState === 'result' && isAllowed;
+  const isSuccess = flowState === 'result' && denialReason === null;
+  const isError = flowState === 'result' && denialReason !== null;
   const isScanning = flowState === 'scanning' || flowState === 'liveness';
-  const showFaceGuide = flowState === 'idle' || flowState === 'detecting' || flowState === 'scanning';
+  const showFaceGuide = flowState === 'idle' || flowState === 'framing';
+  const holdProgress = flowState === 'framing' ? Math.min(1, framing.stableMs / HOLD_MS) : 0;
+
+  const guidance = (() => {
+    if (scanBlocked) return { message: 'Detección en pausa', hint: 'Pulsa Reanudar para continuar' };
+    if (flowState === 'framing') {
+      if (framing.status === 'loading') return { message: 'Preparando la detección', hint: 'Un momento' };
+      if (framing.status === 'unsupported') {
+        return { message: 'Detección automática no disponible', hint: 'Pulsa Iniciar verificación' };
+      }
+      return { message: framing.feedback.message, hint: framing.feedback.hint };
+    }
+    if (flowState === 'liveness') return { message: 'Prueba de vida en curso', hint: 'Sigue las indicaciones en pantalla' };
+    if (flowState === 'scanning') {
+      const stage = SCAN_STAGES.find(s => s.id === activeStage);
+      return { message: stage?.label ?? 'Verificando', hint: stage?.desc ?? '' };
+    }
+    return IDLE_TEXT;
+  })();
 
   return {
     students,
@@ -344,14 +442,20 @@ Resultados:
     scannedStudent,
     confidence,
     scanBlocked,
-    statusMessage,
+    statusMessage: guidance.message,
+    statusHint: guidance.hint,
     livenessSessionId,
-    scanStage,
+    activeStage,
+    scanProgress,
+    denialReason,
+    framing,
+    holdProgress,
+    resetCountdown,
     cameras,
     showSettings,
     selectedCamera,
     videoRef,
-    isAllowed,
+    isAllowed: isSuccess,
     isError,
     isSuccess,
     isScanning,

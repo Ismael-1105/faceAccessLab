@@ -5,22 +5,10 @@ import { ArrowLeft, Fingerprint, Camera as CameraIcon } from 'lucide-react';
 import { useKioskFlow } from '@/src/hooks/useKioskFlow';
 import KioskCameraView from '@/src/components/kiosk/KioskCameraView';
 import KioskStepper from '@/src/components/kiosk/KioskStepper';
-import type { StepId } from '@/src/components/kiosk/KioskStepper';
 
 export default function KioscoPage() {
   const router = useRouter();
   const kiosk = useKioskFlow();
-
-  const activeStep: StepId = (() => {
-    if (kiosk.flowState === 'result') return kiosk.isAllowed ? 'authorizing' : 'comparing';
-    if (kiosk.flowState === 'liveness') return 'verifying';
-    if (kiosk.flowState === 'scanning') {
-      if (kiosk.scanStage >= 3) return 'authorizing';
-      if (kiosk.scanStage >= 2) return 'comparing';
-      if (kiosk.scanStage >= 1) return 'verifying';
-    }
-    return 'detecting';
-  })();
 
   if (kiosk.cameraDenied) {
     return (
@@ -71,6 +59,7 @@ export default function KioscoPage() {
             videoRef={kiosk.videoRef}
             flowState={kiosk.flowState}
             statusMessage={kiosk.statusMessage}
+            statusHint={kiosk.statusHint}
             scanBlocked={kiosk.scanBlocked}
             livenessSessionId={kiosk.livenessSessionId}
             cameras={kiosk.cameras}
@@ -80,6 +69,13 @@ export default function KioscoPage() {
             isSuccess={kiosk.isSuccess}
             isError={kiosk.isError}
             showFaceGuide={kiosk.showFaceGuide}
+            framingIssue={kiosk.framing.feedback.issue}
+            framingQuality={kiosk.framing.feedback.quality}
+            framingBox={kiosk.framing.box}
+            holdProgress={kiosk.holdProgress}
+            scanProgress={kiosk.scanProgress}
+            denialReason={kiosk.denialReason}
+            resetCountdown={kiosk.resetCountdown}
             startLiveness={kiosk.startLiveness}
             toggleSettings={kiosk.toggleSettings}
             switchCamera={kiosk.switchCamera}
@@ -91,11 +87,14 @@ export default function KioscoPage() {
 
           <KioskStepper
             flowState={kiosk.flowState}
-            activeStep={activeStep}
+            activeStage={kiosk.activeStage}
             statusMessage={kiosk.statusMessage}
-            isAllowed={kiosk.isAllowed}
+            statusHint={kiosk.statusHint}
+            isSuccess={kiosk.isSuccess}
+            denialReason={kiosk.denialReason}
             scannedStudent={kiosk.scannedStudent}
             confidence={kiosk.confidence}
+            resetCountdown={kiosk.resetCountdown}
             onPrintReceipt={kiosk.handlePrintReceipt}
           />
         </div>

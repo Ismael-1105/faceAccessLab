@@ -1,13 +1,35 @@
 'use client';
 
-import { Check, X, Camera as CameraIcon, Loader2, ScanFace } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Check, X, Camera as CameraIcon, Loader2, ScanFace, ZoomIn, ZoomOut, Move, Sun,
+  Users, Eye, CircleCheck, Volume2, VolumeX, Timer,
+} from 'lucide-react';
 import type { FlowState } from '@/src/hooks/useKioskFlow';
+import type { NormalizedBox } from '@/src/hooks/useFaceFraming';
+import type { DenialReason, FramingIssue } from '@/src/lib/kiosk-feedback';
+import { DENIAL_REASONS } from '@/src/lib/kiosk-feedback';
+import { isSoundEnabled, setSoundEnabled } from '@/src/lib/kiosk-sound';
 import FaceLivenessView from '@/src/components/FaceLivenessView';
+import KioskGuideOverlay from '@/src/components/kiosk/KioskGuideOverlay';
+
+/** Un icono por instrucción, para que la orden se entienda sin leer. */
+const ISSUE_ICON: Record<string, typeof ScanFace> = {
+  'no-face': ScanFace,
+  'multiple-faces': Users,
+  'too-far': ZoomIn,
+  'too-close': ZoomOut,
+  'off-center': Move,
+  'not-frontal': Eye,
+  'low-light': Sun,
+  ok: CircleCheck,
+};
 
 interface KioskCameraViewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   flowState: FlowState;
   statusMessage: string;
+  statusHint: string;
   scanBlocked: boolean;
   livenessSessionId: string | null;
   cameras: MediaDeviceInfo[];
@@ -17,6 +39,13 @@ interface KioskCameraViewProps {
   isSuccess: boolean;
   isError: boolean;
   showFaceGuide: boolean;
+  framingIssue: FramingIssue | null;
+  framingQuality: number;
+  framingBox: NormalizedBox | null;
+  holdProgress: number;
+  scanProgress: number;
+  denialReason: DenialReason | null;
+  resetCountdown: number;
   startLiveness: () => void;
   toggleSettings: () => void;
   switchCamera: (deviceId: string) => void;
@@ -30,6 +59,7 @@ export default function KioskCameraView({
   videoRef,
   flowState,
   statusMessage,
+  statusHint,
   scanBlocked,
   livenessSessionId,
   cameras,
@@ -39,6 +69,13 @@ export default function KioskCameraView({
   isSuccess,
   isError,
   showFaceGuide,
+  framingIssue,
+  framingQuality,
+  framingBox,
+  holdProgress,
+  scanProgress,
+  denialReason,
+  resetCountdown,
   startLiveness,
   toggleSettings,
   switchCamera,
@@ -48,11 +85,27 @@ export default function KioskCameraView({
   onLivenessFail,
 }: KioskCameraViewProps) {
   const cameraLoading = !videoRef.current || videoRef.current.readyState < 2;
+  const [soundOn, setSoundOn] = useState(true);
+  const denial = denialReason ? DENIAL_REASONS[denialReason] : null;
+  const GuideIcon = ISSUE_ICON[framingIssue ?? 'ok'] ?? ScanFace;
+
+  // La preferencia vive en localStorage, que no existe durante el render en servidor.
+  useEffect(() => { setSoundOn(isSoundEnabled()); }, []);
+
+  const toggleSound = () => {
+    const next = !isSoundEnabled();
+    setSoundEnabled(next);
+    setSoundOn(next);
+  };
 
   return (
     <section className="md:col-span-7 lg:col-span-8 flex flex-col gap-4 animate-kiosk-fade-in">
       {/* Viewport de cámara */}
-      <div className="relative bg-black rounded-[20px] overflow-hidden aspect-[1.7/1.4] shadow-xl shadow-zinc-900/10 dark:shadow-black/40 border border-zinc-200/60 dark:border-zinc-800">
+      <div
+        className={`relative bg-black rounded-[20px] overflow-hidden aspect-[1.7/1.4] shadow-xl shadow-zinc-900/10 dark:shadow-black/40 border-2 transition-colors duration-300 ${
+          isSuccess ? 'border-green-500' : isError ? 'border-red-500' : 'border-zinc-200/60 dark:border-zinc-800'
+        }`}
+      >
         <video
           ref={videoRef}
           autoPlay playsInline muted
@@ -66,34 +119,17 @@ export default function KioskCameraView({
           </div>
         )}
 
-        {/* ══ MÁSCARA DE GUÍA BIOMÉTRICA (overlay, NO recorta el video) ══ */}
+        {/* Guía biométrica viva: color según encuadre y anillo de espera */}
         {showFaceGuide && (
-          <svg
-            className="biometric-mask"
-            viewBox="0 0 100 56.25"
-            preserveAspectRatio="xMidYMid slice"
-          >
-            <defs>
-              <mask id="face-guide-mask">
-                <rect width="100" height="56.25" fill="white" />
-                <ellipse cx="50" cy="28" rx="22.5" ry="18.3" fill="black" />
-              </mask>
-            </defs>
-            <rect width="100" height="56.25" fill="rgba(0,0,0,0.28)" mask="url(#face-guide-mask)" />
-            <ellipse
-              className="mask-ellipse"
-              cx="50"
-              cy="28"
-              rx="22.5"
-              ry="18.3"
-              fill="none"
-              stroke="rgba(255,255,255,0.8)"
-              strokeWidth="0.55"
-            />
-          </svg>
+          <KioskGuideOverlay
+            quality={framingQuality}
+            valid={framingIssue === null}
+            holdProgress={holdProgress}
+            box={framingBox}
+          />
         )}
 
-        {/* ══ ESQUINA SUPERIOR IZQUIERDA: EN VIVO ══ */}
+        {/* Esquina superior izquierda: en vivo */}
         <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-2 bg-black/45 backdrop-blur-md rounded-xl">
           <span className="relative flex h-2 w-2" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
@@ -102,8 +138,16 @@ export default function KioskCameraView({
           <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-white">En vivo</span>
         </div>
 
-        {/* ══ ESQUINA SUPERIOR DERECHA: CÁMARA + CERRAR ══ */}
+        {/* Esquina superior derecha: sonido, cámara y cerrar */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
+          <button
+            onClick={toggleSound}
+            className="w-10 h-10 min-h-11 rounded-xl bg-black/45 backdrop-blur-md flex items-center justify-center text-white/90 hover:bg-black/60 transition-colors"
+            aria-label={soundOn ? 'Silenciar avisos sonoros' : 'Activar avisos sonoros'}
+            aria-pressed={soundOn}
+          >
+            {soundOn ? <Volume2 className="w-4.5 h-4.5" /> : <VolumeX className="w-4.5 h-4.5" />}
+          </button>
           <button
             onClick={toggleSettings}
             className="w-10 h-10 min-h-11 rounded-xl bg-black/45 backdrop-blur-md flex items-center justify-center text-white/90 hover:bg-black/60 transition-colors"
@@ -120,23 +164,49 @@ export default function KioskCameraView({
           </button>
         </div>
 
-        {/* ══ MENSAJES (con aria-live, no tapan el rostro) ══ */}
-        {(flowState === 'idle' || isScanning) && (
+        {/* Instrucción de encuadre: debajo del óvalo, nunca sobre el rostro */}
+        {(flowState === 'idle' || flowState === 'framing') && (
           <div
-            className="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-3 bg-black/60 backdrop-blur-md rounded-xl text-center animate-kiosk-message"
+            className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(90%,26rem)] flex items-center gap-3 px-4 py-3 bg-black/65 backdrop-blur-md rounded-2xl animate-kiosk-message"
             role="status"
             aria-live="polite"
           >
-            <p className="text-sm font-semibold text-white whitespace-nowrap">{statusMessage}</p>
-            <p className="text-[11px] text-zinc-300 mt-0.5">
-              {flowState === 'idle'
-                ? (scanBlocked ? 'Pausado' : 'Detección automática activa')
-                : 'Mantén la cabeza dentro del óvalo'}
-            </p>
+            <GuideIcon
+              className={`w-6 h-6 shrink-0 ${framingIssue === null ? 'text-green-400' : 'text-amber-300'}`}
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white leading-tight">{statusMessage}</p>
+              <p className="text-[11px] text-zinc-300 mt-0.5 leading-tight">{statusHint}</p>
+            </div>
           </div>
         )}
 
-        {/* ══ MENÚ DE CÁMARA ══ */}
+        {/* Progreso real del escaneo */}
+        {isScanning && (
+          <div className="absolute inset-x-0 bottom-0 px-5 pb-5 pt-10 bg-gradient-to-t from-black/80 to-transparent">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-bold text-white">{statusMessage}</p>
+              <p className="text-xs font-mono text-zinc-300">{Math.round(scanProgress * 100)}%</p>
+            </div>
+            <div
+              className="h-2 w-full rounded-full bg-white/20 overflow-hidden"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(scanProgress * 100)}
+              aria-label="Avance de la verificación"
+            >
+              <div
+                className="h-full bg-accent-400 rounded-full transition-[width] duration-200 ease-out"
+                style={{ width: `${Math.round(scanProgress * 100)}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-zinc-300 mt-1.5">{statusHint}</p>
+          </div>
+        )}
+
+        {/* Menú de cámara */}
         {showSettings && (
           <div className="absolute top-14 right-4 w-60 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-2xl p-3 z-20 animate-kiosk-scale-in">
             <p className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider px-2 py-1">Cámara</p>
@@ -162,30 +232,42 @@ export default function KioskCameraView({
           </div>
         )}
 
-        {/* ══ RESULTADO: indicador compacto sin tapar el rostro ══ */}
-        {isSuccess && (
+        {/* Desenlace: veredicto legible a distancia, con la causa real */}
+        {flowState === 'result' && (
           <div
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 bg-green-600 rounded-2xl shadow-2xl animate-kiosk-scale-in"
+            className={`absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center animate-kiosk-scale-in backdrop-blur-sm ${
+              isSuccess ? 'bg-green-950/70' : 'bg-red-950/70'
+            }`}
             role="status"
             aria-live="assertive"
           >
-            <Check className="w-6 h-6 text-white" strokeWidth={2.5} />
-            <p className="text-sm font-black text-white uppercase tracking-wide">Acceso concedido</p>
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${isSuccess ? 'bg-green-600' : 'bg-red-600'}`}>
+              {isSuccess
+                ? <Check className="w-9 h-9 text-white" strokeWidth={2.5} />
+                : <X className="w-9 h-9 text-white" strokeWidth={2.5} />}
+            </div>
+            <p className="text-2xl font-black text-white uppercase tracking-wide">
+              {isSuccess ? 'Acceso concedido' : 'Acceso denegado'}
+            </p>
+            {denial && (
+              <p className="text-base font-semibold text-white/90">
+                <span className="font-mono mr-2">{denial.code}</span>
+                {denial.title}
+              </p>
+            )}
+            <p className="text-sm text-white/80 max-w-md leading-relaxed">
+              {denial ? denial.action : 'Puedes ingresar al laboratorio'}
+            </p>
+            {resetCountdown > 0 && (
+              <p className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-white/60 mt-1">
+                <Timer className="w-3.5 h-3.5" aria-hidden="true" />
+                Reinicia en {resetCountdown} s
+              </p>
+            )}
           </div>
         )}
 
-        {isError && (
-          <div
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 bg-red-600 rounded-2xl shadow-2xl animate-kiosk-scale-in"
-            role="status"
-            aria-live="assertive"
-          >
-            <X className="w-6 h-6 text-white" strokeWidth={2.5} />
-            <p className="text-sm font-black text-white uppercase tracking-wide">Acceso denegado</p>
-          </div>
-        )}
-
-        {/* ══ OVERLAY FACE LIVENESS ══ */}
+        {/* Overlay Face Liveness */}
         {flowState === 'liveness' && livenessSessionId && (
           <div className="absolute inset-0 animate-kiosk-fade-in">
             <FaceLivenessView
@@ -199,7 +281,7 @@ export default function KioskCameraView({
 
       {/* Controles */}
       <div className="flex items-center gap-3">
-        {flowState === 'idle' && !scanBlocked && (
+        {(flowState === 'idle' || flowState === 'framing') && !scanBlocked && (
           <button
             onClick={startLiveness}
             className="flex-1 flex items-center justify-center gap-2 px-6 py-4 min-h-14 bg-accent-600 hover:bg-accent-700 text-white rounded-2xl text-sm font-bold transition-all active:scale-[0.98] shadow-lg shadow-accent-600/20"
@@ -208,7 +290,7 @@ export default function KioskCameraView({
             Iniciar verificación
           </button>
         )}
-        {flowState === 'idle' && (
+        {(flowState === 'idle' || flowState === 'framing') && (
           <button
             onClick={toggleScanBlocked}
             className={`px-6 py-4 min-h-14 rounded-2xl text-sm font-semibold transition-all active:scale-[0.98] ${
@@ -234,7 +316,7 @@ export default function KioskCameraView({
             className="flex-1 flex items-center justify-center gap-2 px-6 py-4 min-h-14 bg-accent-600 hover:bg-accent-700 text-white rounded-2xl text-sm font-bold transition-all active:scale-[0.98] shadow-lg shadow-accent-600/20"
           >
             <ScanFace className="w-5 h-5" />
-            {isSuccess ? 'Nuevo escaneo' : 'Reintentar'}
+            {isSuccess ? 'Nuevo escaneo' : denial?.retryable ? 'Reintentar ahora' : 'Continuar'}
           </button>
         )}
       </div>
