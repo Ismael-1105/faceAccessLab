@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-mediapipe-wasm.mjs",
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 3005",
     "prebuild": "node scripts/copy-mediapipe-wasm.mjs",
     "build": "next build",
     "start": "next start",

@@ -18,14 +18,23 @@ export default function KioscoPage() {
         </div>
         <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Cámara requerida</h2>
         <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center max-w-sm">
-          FaceAccess Lab necesita acceso a la cámara. Habilita los permisos en tu navegador.
+          La cámara está ocupada por otra aplicación o pestaña (por ejemplo, otra pestaña del kiosco
+          abierta). Ciérrala, vuelve a esta pestaña e intenta nuevamente.
         </p>
-        <button
-          onClick={() => router.back()}
-          className="mt-2 px-8 py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-200 transition-colors"
-        >
-          Volver
-        </button>
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={() => kiosk.retryWebcam()}
+            className="px-8 py-4 bg-accent-600 hover:bg-accent-700 text-white rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer"
+          >
+            Reintentar cámara
+          </button>
+          <button
+            onClick={() => router.back()}
+            className="px-8 py-4 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-200 transition-colors"
+          >
+            Volver
+          </button>
+        </div>
       </div>
     );
   }

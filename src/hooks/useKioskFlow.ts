@@ -51,6 +51,7 @@ export interface KioskFlow {
   showFaceGuide: boolean;
   startLiveness: () => void;
   switchCamera: (deviceId: string) => void;
+  retryWebcam: () => void;
   toggleSettings: () => void;
   resetScan: () => void;
   toggleScanBlocked: () => void;
@@ -65,6 +66,21 @@ const HOLD_MS = 1200;
 const PROGRESS_TICK_MS = 100;
 /** Espera antes del reinicio automático, según el desenlace. */
 const RESET_MS = { granted: 6000, denied: 12000 } as const;
+/** Reintentos de la cámara ante errores transitorios (cámara ocupada). */
+const CAMERA_MAX_ATTEMPTS = 5;
+const CAMERA_RETRY_DELAY_MS = 1000;
+
+/**
+ * Errores de getUserMedia que pueden resolverse solos (la cámara está
+ * ocupada por otra aplicación/pestaña o por un stream que aún se libera).
+ */
+function isTransientCameraError(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'name' in err) {
+    const name = String((err as { name?: unknown }).name);
+    return name === 'NotReadableError' || name === 'AbortError' || name === 'NotFoundError';
+  }
+  return false;
+}
 
 const STAGE_TARGET = Object.fromEntries(
   SCAN_STAGES.map(s => [s.id, s.progress]),
@@ -99,6 +115,8 @@ export function useKioskFlow(): KioskFlow {
   const stageTargetRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraDeniedRef = useRef(false);
+  const selectedCameraRef = useRef('');
   const performScanRef = useRef<(frameArg?: string) => void>(() => {});
   /** Instante de inicio del escaneo para medir la latencia del reconocimiento. */
   const scanStartRef = useRef(0);
@@ -118,8 +136,11 @@ export function useKioskFlow(): KioskFlow {
     }
   }, []);
 
-  const startWebcam = useCallback(async (deviceId?: string) => {
+  const startWebcam = useCallback(async (deviceId?: string, attempt = 1): Promise<boolean> => {
     try {
+      // Libera cualquier stream interno previo antes de pedir la cámara, para
+      // no abrir dos streams sobre el mismo dispositivo (evita NotReadableError).
+      stopWebcam();
       const constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: 1280 },
@@ -139,11 +160,29 @@ export function useKioskFlow(): KioskFlow {
       if (flowStateRef.current === 'idle') setFlow('framing');
       return true;
     } catch (err) {
+      // La cámara puede estar momentáneamente ocupada (otra pestaña, otra app o
+      // un stream anterior aún liberándose): reintenta con backoff antes de rendirse.
+      if (attempt < CAMERA_MAX_ATTEMPTS && isTransientCameraError(err)) {
+        await new Promise<void>(resolve => setTimeout(resolve, CAMERA_RETRY_DELAY_MS * attempt));
+        return startWebcam(deviceId, attempt + 1);
+      }
+      // Un deviceId concreto puede quedar obsoleto tras cambiar el dispositivo;
+      // reintenta con la cámara por defecto antes de rendirse.
+      if (deviceId) {
+        console.warn('[Kiosk] Falló la cámara seleccionada; reintentando con la predeterminada:', err);
+        return startWebcam(undefined, CAMERA_MAX_ATTEMPTS);
+      }
       console.error('[Kiosk] Error cámara:', err);
       setCameraDenied(true);
       return false;
     }
-  }, [setFlow]);
+  }, [setFlow, stopWebcam]);
+
+  /** Vuelve a intentar abrir la cámara tras una negación o error transitorio. */
+  const retryWebcam = useCallback(() => {
+    setCameraDenied(false);
+    return startWebcam(selectedCamera || undefined);
+  }, [selectedCamera, startWebcam]);
 
   const switchCamera = useCallback((deviceId: string) => {
     stopWebcam();
@@ -293,6 +332,14 @@ export function useKioskFlow(): KioskFlow {
     performScanRef.current = performScan;
   }, [performScan]);
 
+  useEffect(() => {
+    cameraDeniedRef.current = cameraDenied;
+  }, [cameraDenied]);
+
+  useEffect(() => {
+    selectedCameraRef.current = selectedCamera;
+  }, [selectedCamera]);
+
   const resetScan = useCallback(() => {
     scanningRef.current = false;
     startingRef.current = false;
@@ -327,9 +374,19 @@ export function useKioskFlow(): KioskFlow {
 
     startWebcam();
 
+    // Si otra pestaña o app tenía la cámara, al volver a esta la pestaña el
+    // dispositivo se libera solo: reintenta en cuanto recupere el foco.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && cameraDeniedRef.current) {
+        startWebcam(selectedCameraRef.current || undefined);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelled = true;
       stopWebcam();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [startWebcam, stopWebcam]);
 
@@ -445,6 +502,7 @@ Resultados:
     showFaceGuide,
     startLiveness,
     switchCamera,
+    retryWebcam,
     toggleSettings,
     resetScan,
     toggleScanBlocked,

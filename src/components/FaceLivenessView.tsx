@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { FaceLivenessDetectorCore } from '@aws-amplify/ui-react-liveness';
 import '@aws-amplify/ui-react-liveness/dist/styles.css';
+import { LIVENESS_DISPLAY_TEXT_ES } from '../lib/liveness-display-text.ts';
 
 interface FaceLivenessViewProps {
   attemptId: string;
@@ -62,6 +63,7 @@ export default function FaceLivenessView({ attemptId, sessionId, onSuccess, onFa
           onAnalysisComplete={handleAnalysisComplete}
           onError={handleError}
           disableStartScreen
+          displayText={LIVENESS_DISPLAY_TEXT_ES}
           config={{
             credentialProvider: fetchAwsCredentials,
           }}
