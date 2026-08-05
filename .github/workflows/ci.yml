@@ -36,18 +36,5 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build
-        run: pnpm build
-
-      - name: Verify build output
-        run: |
-          if [ -d .next/standalone ]; then
-            echo "Build verified (standalone output):"
-            ls .next/
-          elif [ -d .next ]; then
-            echo "Build verified:"
-            ls .next/
-          else
-            echo "ERROR: .next directory not found"
-            exit 1
-          fi
+      # El build se ejecuta en Vercel, no en CI (requiere JWT_SECRET y otras credenciales
+      # que se configuran como secretos en Vercel).
