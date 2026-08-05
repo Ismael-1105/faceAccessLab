@@ -38,6 +38,7 @@ const FAILING_STAGE: Record<DenialReason, ScanStageId> = {
   'wrong-lab': 'authorize',
   virtual: 'authorize',
   'no-biometric': 'authorize',
+  'consent-expired': 'authorize',
 };
 
 interface KioskStepperProps {

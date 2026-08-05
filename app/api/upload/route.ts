@@ -1,6 +1,7 @@
 import { uploadImage } from '@/lib/s3';
 import { v4 as uuidv4 } from 'uuid';
 import { getAuthPayload } from '@/lib/auth';
+import { sanitizeError } from '@/lib/errors';
 
 export async function POST(req: Request) {
   const auth = getAuthPayload(req);
@@ -28,14 +29,13 @@ export async function POST(req: Request) {
     }
 
     const s3Key = `students/${studentId || uuidv4()}.jpg`;
-    const imageUrl = await uploadImage(s3Key, imageBase64);
+    await uploadImage(s3Key, imageBase64);
 
-    return new Response(JSON.stringify({ ok: true, url: imageUrl, key: s3Key }), {
+    return new Response(JSON.stringify({ ok: true, key: s3Key }), {
       status: 201, headers: { 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Error desconocido';
-    return new Response(JSON.stringify({ error: msg }), {
+    return new Response(JSON.stringify({ error: sanitizeError(error) }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });
   }

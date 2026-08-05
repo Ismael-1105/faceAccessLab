@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Student, AccessLog, AuthUser, Alert } from '../types.ts';
-import { api, getToken, setToken } from '../lib/api.ts';
+import { api, getToken, setToken, attemptRefresh } from '../lib/api.ts';
 import ErrorBoundary from '../components/ErrorBoundary.tsx';
 
 export type Theme = 'light' | 'dark';
@@ -83,8 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   useEffect(() => {
-    const token = getToken();
-    if (token) {
+    const applyUser = (token: string) => {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUser({
@@ -96,6 +95,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           studentId: payload.studentId,
           labCode: payload.labCode,
         });
+      } catch {
+        setToken(null);
+      }
+    };
+
+    const token = getToken();
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) {
+          // Access token expirado: intentar rotar la sesión vía refresh cookie.
+          attemptRefresh().then(ok => {
+            const refreshed = getToken();
+            if (ok && refreshed) applyUser(refreshed);
+            else setToken(null);
+          });
+          return;
+        }
+        applyUser(token);
       } catch {
         setToken(null);
       }

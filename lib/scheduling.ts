@@ -1,5 +1,6 @@
 import { Schedule, Enrollment, Student } from './models.ts';
 import { v4 as uuidv4 } from 'uuid';
+import { isConsentActive } from './biometrics.ts';
 
 export interface ScheduleView {
   id: string;
@@ -86,7 +87,7 @@ export function isClassNow(schedule: { startTime: string; endTime: string }, now
  */
 export type AuthResult =
   | { allowed: true; schedule: ScheduleView }
-  | { allowed: false; schedule: ScheduleView | null; reason: 'no-class' | 'not-enrolled' | 'class-not-started' | 'class-ended' | 'class-cancelled' | 'wrong-lab' | 'virtual' | 'no-biometric' };
+  | { allowed: false; schedule: ScheduleView | null; reason: 'no-class' | 'not-enrolled' | 'class-not-started' | 'class-ended' | 'class-cancelled' | 'wrong-lab' | 'virtual' | 'no-biometric' | 'consent-expired' };
 
 /**
  * Autorización por planificación + estado de sesión:
@@ -152,9 +153,15 @@ export async function canAccessLab(
   }
 
   // El acceso físico exige biometría registrada.
-  const student = await Student.findOne({ id: studentId }).select('biometricStatus');
+  const student = await Student.findOne({ id: studentId }).select('biometricStatus consentVersion consentGrantedAt consentExpiresAt consentRevokedAt');
   if (!student || student.biometricStatus !== 'registered') {
     return { allowed: false, schedule: inSession, reason: 'no-biometric' };
+  }
+
+  // Fase 3: consentimiento biométrico vigente. Si expiró o fue revocado, la
+  // biometría deja de ser válida aunque siga indexada.
+  if (!isConsentActive(student)) {
+    return { allowed: false, schedule: inSession, reason: 'consent-expired' };
   }
 
   return { allowed: true, schedule: inSession };

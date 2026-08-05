@@ -117,3 +117,43 @@ pnpm tsx scripts/ensure-indexes.ts
 3. Ejecutar carga básica (C1–C5) y registrar latencias.
 4. Guardar capturas en `docs/evidencia/` y referenciarlas aquí.
 5. Llenar las tablas con los resultados reales antes de la sustentación.
+
+---
+
+## 8. Pruebas automatizadas (Fase 4)
+
+### Suites y cobertura
+
+| Suite | Archivos | Cobertura objetivo |
+|---|---|---|
+| Unitarias | src/lib/{auth,rbac,validation,scheduling,evidence,biometrics,csrf,rate-limit,attendance-idempotency,consent,kiosk-verification}.test.ts | Statements 75% · Branches 65% · Functions 75% · Lines 75% (global, itest.config.ts) |
+| Integración | src/integration.test.ts (login, RBAC de estudiantes, registro biométrico, intento duplicado, exportación de reporte) | Mocks de modelos/AWS |
+| E2E (Playwright) | 2e/{auth,students}.spec.ts | Flujos de panel + kiosco |
+
+### Ejecutar
+
+`
+pnpm test            # unitarias + integración (Vitest)
+pnpm test:coverage   # ídem con reporte de cobertura
+pnpm test:e2e        # Playwright (requiere backend + npx playwright install chromium)
+`
+
+### Resultado de cobertura (núcleo)
+
+| Archivo | % Stmts | % Branch | % Funcs | % Lines |
+|---|---|---|---|---|
+| attendance-idempotency | 100 | 100 | 100 | 100 |
+| biometrics | 100 | 100 | 100 | 100 |
+| validation | 100 | 100 | 100 | 100 |
+| distributed-rate-limit | 100 | 100 | 100 | 100 |
+| rbac | 90.8 | 93.5 | 92.3 | 90.8 |
+| consent | 97.6 | 27.3 | 83.3 | 97.6 |
+| csrf | 91.1 | 77.8 | 100 | 91.1 |
+| evidence | 90 | 61.1 | 100 | 90 |
+| scheduling | 86.7 | 91.9 | 60 | 86.7 |
+| auth | 86.2 | 86.2 | 93.8 | 86.2 |
+| kiosk-verification | 74.3 | 81.0 | 72.7 | 74.3 |
+
+**Nota:** el pipeline del kiosco aspira a >90% (depende de AWS Liveness/Rekognition
+para cubrir las ramas restantes). Los módulos de auth/rbac/attendance-idempotency
+superan el 86-100%.

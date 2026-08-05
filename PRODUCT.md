@@ -40,7 +40,7 @@ Control de acceso biométrico universitario que combina reconocimiento facial co
 - **Alertas:** Generadas en backend (accesos denegados repetidos → SNS + documento en MongoDB) y sincronizadas en el portal con polling cada 30s.
 - **Prueba de vida en español:** La interfaz de `FaceLivenessDetectorCore` se traduce al español mediante la prop `displayText` (mecanismo oficial de `@aws-amplify/ui-react-liveness` 3.6.8), definida en `src/lib/liveness-display-text.ts`. La traducción no altera el veredicto, que sigue siendo autoritativo del backend.
 - **Identidad de dispositivo (decisión):** El modelo `KioskDevice` y el provisionamiento con credencial de un solo uso se diseñaron e implementaron, y luego se revirtieron. El flujo actual identifica al kiosco con `KIOSK_ID`/`KIOSK_LAB` de entorno (modo simulación/navegador). Decisión de re-activación para producción aún no tomada.
-- No integra la API de Gemini en tiempo real (dependencia declarada pero no conectada).
+- El reconocimiento facial y la prueba de vida se basan en **AWS Rekognition + Face Liveness**.
 - `src/data.ts` conserva datos seed (estudiantes, logs, servicios cloud, usuarios) como estado inicial/fallback; la fuente de verdad es MongoDB.
 - Las fotos de estudiantes nuevos se suben a S3; `public/images/` provee avatares y assets seed.
 - Los nombres de dominio de ejemplo (`universidad.edu`) deberán reemplazarse con la marca UIDE.
@@ -58,7 +58,7 @@ Control de acceso biométrico universitario que combina reconocimiento facial co
 - Backend funcional: API routes, MongoDB Atlas, AWS Rekognition/S3/SNS, CloudWatch, auth JWT.
 - Favicon y logo circular en `app/icon.png` / `app/apple-icon.png`, desde `assets/favicon/logo.png`.
 - Documentación de pantallas en `docs/inventario-pantallas.md`.
-- Guía de CI/CD en `docs/documentacion-cicd.md`.
+- Despliegue y CI/CD en `docs/deployment.md`; pruebas en `docs/testing.md`.
 
 ## Product Principles
 

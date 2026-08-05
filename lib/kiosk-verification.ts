@@ -9,6 +9,8 @@ import { publishAlert } from './sns.ts';
 import { Metrics } from './cloudwatch.ts';
 import { createKioskAttemptToken, matchesKioskAttemptToken } from './kiosk-attempt-auth.ts';
 import { attendanceRecordId, isMongoDuplicateKeyError } from './attendance-idempotency.ts';
+import { LIVENESS_CONFIDENCE_THRESHOLD } from './biometrics.ts';
+import { logger } from './observability.ts';
 import {
   AccessLog,
   Alert,
@@ -21,7 +23,6 @@ import {
 
 const ATTEMPT_TTL_MS = 3 * 60 * 1000;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-const LIVENESS_THRESHOLD = 75;
 
 export type KioskDenialReason =
   | 'no-match'
@@ -38,7 +39,8 @@ export type KioskDenialReason =
   | 'class-cancelled'
   | 'wrong-lab'
   | 'virtual'
-  | 'no-biometric';
+  | 'no-biometric'
+  | 'consent-expired';
 
 export interface KioskVerificationResult {
   attemptId: string;
@@ -84,7 +86,7 @@ function mapScheduleReason(result: Exclude<AuthResult, { allowed: true }>): Kios
   return result.reason;
 }
 
-export async function createKioskAttempt() {
+export async function createKioskAttempt(requestId?: string) {
   await connectDB();
   const { kioskId, labCode } = serverKioskConfig();
   const liveness = await createLivenessSession();
@@ -101,6 +103,9 @@ export async function createKioskAttempt() {
     status: 'pending',
     expiresAt,
   });
+
+  void Metrics.attemptsPerKiosk(kioskId);
+  logger.info('kiosk.attempt.created', { requestId, attemptId: id, kioskId, labCode });
 
   return { attemptId: id, attemptToken, sessionId: liveness.sessionId, expiresAt: expiresAt.toISOString() };
 }
@@ -198,7 +203,7 @@ async function saveDeniedEvidence(
   }
 }
 
-export async function verifyKioskAttempt(attemptId: string, attemptToken: string, imageBase64: string): Promise<KioskVerificationResult> {
+export async function verifyKioskAttempt(attemptId: string, attemptToken: string, imageBase64: string, requestId?: string): Promise<KioskVerificationResult> {
   await connectDB();
 
   const authorizedAttempt = await KioskAttempt.findOne({ id: attemptId, expiresAt: { $gt: new Date() } })
@@ -218,15 +223,24 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
   if (!attempt) throw new Error('Intento inválido, expirado o ya consumido');
 
   const startedAt = Date.now();
+  logger.info('kiosk.verification.started', { requestId, attemptId, kioskId: attempt.kioskId, labCode: attempt.labCode });
   try {
     decodeImage(imageBase64);
+    const livenessT0 = Date.now();
     const liveness = await getLivenessResult(attempt.livenessSessionId);
+    void Metrics.livenessLatency(Date.now() - livenessT0);
+    logger.info('kiosk.liveness.completed', {
+      requestId, attemptId, kioskId: attempt.kioskId, labCode: attempt.labCode,
+      succeeded: liveness.status === 'SUCCEEDED',
+      confidence: liveness.confidence,
+      durationMs: Date.now() - livenessT0,
+    });
     const trustedReferenceImage = liveness.referenceImageBytes
       ? `data:image/jpeg;base64,${Buffer.from(liveness.referenceImageBytes).toString('base64')}`
       : null;
 
     let result: Omit<KioskVerificationResult, 'attemptId'>;
-    if (liveness.status !== 'SUCCEEDED' || liveness.confidence < LIVENESS_THRESHOLD || !liveness.referenceImageBytes) {
+    if (liveness.status !== 'SUCCEEDED' || liveness.confidence < LIVENESS_CONFIDENCE_THRESHOLD || !liveness.referenceImageBytes) {
       Metrics.livenessFailed();
       result = { allowed: false, reason: 'liveness-failed', confidence: liveness.confidence, student: null, schedule: null };
     } else {
@@ -235,6 +249,10 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
       // misma sesión AWS Face Liveness. La captura enviada por el navegador se
       // conserva únicamente como evidencia y nunca puede elegir la identidad.
       const match = await searchFace(liveness.referenceImageBytes);
+      logger.info('kiosk.rekognition.completed', {
+        requestId, attemptId, kioskId: attempt.kioskId, labCode: attempt.labCode,
+        matched: Boolean(match.studentId), confidence: match.confidence,
+      });
       if (!match.studentId) {
         result = { allowed: false, reason: 'no-match', confidence: 0, student: null, schedule: null };
       } else {
@@ -306,6 +324,23 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
 
     const response: KioskVerificationResult = { attemptId, ...result };
     await persistResult(attemptId, response);
+
+    // Correlación: intento → alumno → kiosco → decisión (sin imágenes ni tokens).
+    if (!result.allowed) void Metrics.deniedPerKiosk(attempt.kioskId);
+    const durationMs = Date.now() - startedAt;
+    void import('./monitoring.ts').then(({ recordLatency }) => recordLatency('kiosk/verify', durationMs));
+    logger.info('kiosk.verification.completed', {
+      requestId,
+      attemptId,
+      kioskId: attempt.kioskId,
+      labCode: attempt.labCode,
+      studentId: result.student?.id,
+      decision: result.allowed ? 'granted' : 'denied',
+      reason: result.reason,
+      durationMs,
+      confidence: result.confidence,
+    });
+
     return response;
   } catch (error) {
     // Fallos de captura/decodificación (R06) se distinguen de errores de red (R07).
@@ -314,6 +349,10 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
       { id: attemptId, status: 'processing' },
       { $set: { status: 'failed', consumedAt: new Date(), reason } },
     );
+    logger.error('kiosk.verification.failed', {
+      requestId, attemptId, reason,
+      error: error instanceof Error ? error.message : 'desconocido',
+    });
     throw error;
   }
 }

@@ -1,16 +1,12 @@
-import { handleLogout } from '@/lib/handlers';
+import { corsOptions } from '@/lib/cors';
+import { authService } from '@/src/modules/auth/auth.service';
+import { sendJson } from '@/src/shared/http';
 
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+export function OPTIONS(req: Request) {
+  return corsOptions(req);
 }
 
 export async function POST(req: Request) {
-  return handleLogout(req);
+  const result = await authService.logout(req);
+  return sendJson(result.body, result.status, { cookies: result.cookies });
 }

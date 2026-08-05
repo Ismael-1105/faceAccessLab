@@ -2,27 +2,12 @@ const API_BASE = '/api';
 
 let authToken: string | null = null;
 
-const COOKIE_NAME = 'token';
-const COOKIE_MAX_AGE = 60 * 60 * 24; // 24h (coincide con JWT)
-
-function writeCookie(token: string) {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax`;
-}
-
-function clearCookie() {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
-}
-
 export function setToken(token: string | null) {
   authToken = token;
   if (token) {
     localStorage.setItem('faceaccess_token', token);
-    writeCookie(token);
   } else {
     localStorage.removeItem('faceaccess_token');
-    clearCookie();
   }
 }
 
@@ -36,8 +21,51 @@ export function getToken(): string | null {
   return null;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+/** CSRF double-submit: la cookie csrf_token la establece el servidor en login. */
+function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Rota el refresh token (cookie HttpOnly) y devuelve un access token nuevo.
+ * Las cookies las establece el servidor; aquí solo se actualiza el token local.
+ */
+async function refreshAccessToken(): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const csrf = getCsrfToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', headers });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    if (data?.token) {
+      setToken(data.token);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Reintento de sesión: útil al cargar la app con un access token expirado. */
+export async function attemptRefresh(): Promise<boolean> {
+  return refreshAccessToken();
+}
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Error de conexión' }));
+    throw new Error(body.error || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
+async function request<T>(path: string, options: RequestInit = {}, retried = false): Promise<T> {
   const token = getToken();
+  const method = (options.method || 'GET').toUpperCase();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers || {}) as Record<string, string>),
@@ -46,23 +74,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    const csrf = getCsrfToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !retried) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      const retryHeaders: Record<string, string> = { ...headers, Authorization: `Bearer ${getToken()}` };
+      const res2 = await fetch(`${API_BASE}${path}`, { ...options, headers: retryHeaders });
+      return handleResponse<T>(res2);
+    }
     setToken(null);
     throw new Error('Sesión expirada');
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: 'Error de conexión' }));
-    throw new Error(body.error || `Error ${res.status}`);
-  }
-
-  return res.json();
+  return handleResponse<T>(res);
 }
 
 export const api = {
@@ -220,23 +250,30 @@ export const api = {
     request<import('../types.ts').AcademicDashboard>('/dashboard'),
 
   downloadAttendanceReport: async (format: 'excel' | 'pdf') => {
-    const res = await fetch(`${API_BASE}/reports/attendance/export?format=${format}`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: 'Error al generar reporte' }));
-      throw new Error(body.error || `Error ${res.status}`);
-    }
-    const blob = await res.blob();
-    const ext = format === 'excel' ? 'csv' : 'html';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `asistencia-${new Date().toISOString().slice(0, 10)}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const run = async (attempt = 0): Promise<void> => {
+      const res = await fetch(`${API_BASE}/reports/attendance/export?format=${format}`, {
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+      });
+      if (res.status === 401 && attempt === 0) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) return run(1);
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Error al generar reporte' }));
+        throw new Error(body.error || `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const ext = format === 'excel' ? 'csv' : 'html';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `asistencia-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+    await run();
   },
 
   logout: () =>
@@ -263,23 +300,30 @@ export const api = {
     request<import('../types.ts').SystemHealth>('/health'),
 
   downloadReport: async () => {
-    const res = await fetch(`${API_BASE}/reports/summary`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: 'Error al generar reporte' }));
-      throw new Error(body.error || `Error ${res.status}`);
-    }
-    const text = await res.text();
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reporte-faceaccess-${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const run = async (attempt = 0): Promise<void> => {
+      const res = await fetch(`${API_BASE}/reports/summary`, {
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+      });
+      if (res.status === 401 && attempt === 0) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) return run(1);
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Error al generar reporte' }));
+        throw new Error(body.error || `Error ${res.status}`);
+      }
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reporte-faceaccess-${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+    await run();
   },
 
   getStudents: () =>
@@ -302,6 +346,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ id }),
     }),
+
+  revokeBiometric: (id: string) =>
+    request<{ ok: boolean; student: import('../types.ts').Student }>('/students/revoke-biometric', {
+      method: 'PUT',
+      body: JSON.stringify({ id }),
+    }),
+
+  getConsentLogs: (studentId: string) =>
+    request<import('../types.ts').ConsentLog[]>(`/students/consent?studentId=${encodeURIComponent(studentId)}`),
 
   registerBiometric: (data: { studentId: string; imageBase64: string }) =>
     request<{ ok: boolean; message: string; student: import('../types.ts').Student }>('/rekognition/register-biometric', {

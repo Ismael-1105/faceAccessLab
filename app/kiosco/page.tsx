@@ -1,10 +1,30 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Fingerprint, Camera as CameraIcon } from 'lucide-react';
+import {
+  ArrowLeft, Fingerprint, Camera as CameraIcon, Maximize2, Minimize2, Volume2, VolumeX,
+  Wifi, WifiOff, Sun, SunDim,
+} from 'lucide-react';
 import { useKioskFlow } from '@/src/hooks/useKioskFlow';
 import KioskCameraView from '@/src/components/kiosk/KioskCameraView';
 import KioskStepper from '@/src/components/kiosk/KioskStepper';
+
+function StatusPill({ ok, label, Icon, aria }: { ok: boolean; label: string; Icon: typeof Wifi; aria: string }) {
+  return (
+    <span
+      role="status"
+      aria-label={aria}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
+        ok
+          ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/40'
+          : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/40'
+      }`}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
 
 export default function KioscoPage() {
   const router = useRouter();
@@ -39,6 +59,9 @@ export default function KioscoPage() {
     );
   }
 
+  const lightingOk = kiosk.framing.feedback.issue !== 'low-light';
+  const connected = kiosk.isOnline && kiosk.serverReachable;
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col">
       {/* Barra superior */}
@@ -59,8 +82,50 @@ export default function KioscoPage() {
             <p className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase tracking-widest font-mono">Acceso Biométrico</p>
           </div>
         </div>
-        <div className="w-20 hidden sm:block" />
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={kiosk.toggleSound}
+            className="p-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all cursor-pointer"
+            aria-label={kiosk.soundEnabled ? 'Silenciar señales sonoras' : 'Activar señales sonoras'}
+            title="Sonido"
+          >
+            {kiosk.soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={kiosk.toggleFullscreen}
+            className="p-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all cursor-pointer"
+            aria-label={kiosk.isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            title="Pantalla completa"
+          >
+            {kiosk.isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
       </header>
+
+      {/* Estado del terminal: cámara, conectividad e iluminación */}
+      <div className="px-5 md:px-8 pt-3 flex flex-wrap items-center gap-2" aria-live="polite">
+        <StatusPill ok={kiosk.cameraReady} label="Cámara" Icon={CameraIcon} aria="Estado de la cámara" />
+        <StatusPill ok={connected} label={connected ? 'En línea' : 'Sin conexión'} Icon={connected ? Wifi : WifiOff} aria="Conectividad" />
+        <StatusPill ok={lightingOk} label="Iluminación" Icon={lightingOk ? Sun : SunDim} aria="Comprobación de iluminación" />
+        {kiosk.attemptCountdown > 0 && (
+          <span
+            role="timer"
+            aria-label={`Tiempo restante del intento: ${kiosk.attemptCountdown} segundos`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40"
+          >
+            <CameraIcon className="w-3 h-3" /> {kiosk.attemptCountdown}s
+          </span>
+        )}
+      </div>
+
+      {/* Banner offline */}
+      {!connected && (
+        <div role="alert" className="mx-5 md:mx-8 mt-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl px-4 py-2.5 flex items-center gap-2.5 text-xs text-red-700 dark:text-red-300 font-medium">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          Sin conexión con el servidor: el kiosco reintentará automáticamente. Los eventos de diagnóstico
+          se guardan localmente y se enviarán al recuperar la conexión.
+        </div>
+      )}
 
       <main className="flex-grow p-4 md:p-6 lg:p-8 flex items-center justify-center">
         <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8">

@@ -2,11 +2,15 @@ import { getAuthPayload } from '@/lib/auth';
 import { connectDB } from '@/lib/db';
 import { User } from '@/lib/models';
 import { generateSecret, generateTotp, verifyTotp } from '@/lib/totp';
+import { RATE_LIMITS } from '@/lib/rate-limit';
+import { checkDistributedRateLimit, getClientAddress } from '@/lib/distributed-rate-limit';
+import { sanitizeError } from '@/lib/errors';
+import { corsOptions } from '@/lib/cors';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
   });
 }
 
@@ -14,7 +18,16 @@ function json(data: unknown, status = 200): Response {
 // POST { action: 'verify', token } → activa MFA si el token es válido contra el secreto pendiente.
 // POST { action: 'disable', token } → desactiva MFA (requiere token válido).
 // POST { action: 'login', email, token } → verifica el token MFA durante el login (público).
+export function OPTIONS(req: Request) {
+  return corsOptions(req);
+}
+
 export async function POST(req: Request) {
+  const ip = getClientAddress(req);
+  if (!await checkDistributedRateLimit(`mfa:${ip}`, RATE_LIMITS.login)) {
+    return json({ error: 'Demasiadas solicitudes. Espera un minuto.' }, 429);
+  }
+
   try {
     const body = await req.json() as {
       action?: string;
@@ -73,6 +86,6 @@ export async function POST(req: Request) {
 
     return json({ error: 'Acción inválida' }, 400);
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'Error' }, 500);
+    return json({ error: sanitizeError(e) }, 500);
   }
 }

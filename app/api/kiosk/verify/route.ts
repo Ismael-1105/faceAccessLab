@@ -3,11 +3,15 @@ import { RATE_LIMITS } from '@/lib/rate-limit';
 import { checkDistributedRateLimit, getClientAddress } from '@/lib/distributed-rate-limit';
 import { InvalidJsonError, PayloadTooLargeError, readLimitedJson } from '@/lib/request-body';
 import { getKioskAttemptToken } from '@/lib/kiosk-attempt-cookie';
+import { sanitizeError } from '@/lib/errors';
+import { getRequestId } from '@/lib/observability';
+import { Metrics } from '@/lib/cloudwatch';
 
 // Imagen máxima backend: 2 MiB. El base64 añade ~33% y el resto es JSON.
 const MAX_VERIFY_BODY_BYTES = 3 * 1024 * 1024;
 
 export async function POST(req: Request) {
+  const requestId = getRequestId(req);
   const ip = getClientAddress(req);
   if (!await checkDistributedRateLimit(`kiosk-verify:${ip}`, RATE_LIMITS.compare)) {
     return Response.json({ ok: false, error: 'Demasiadas solicitudes. Espera un minuto.' }, { status: 429 });
@@ -24,7 +28,7 @@ export async function POST(req: Request) {
     if (!attemptToken) {
       return Response.json({ ok: false, error: 'Credencial de intento requerida' }, { status: 401 });
     }
-    const result = await verifyKioskAttempt(body.attemptId, attemptToken, body.imageBase64);
+    const result = await verifyKioskAttempt(body.attemptId, attemptToken, body.imageBase64, requestId);
     return Response.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
@@ -33,6 +37,7 @@ export async function POST(req: Request) {
     if (error instanceof InvalidJsonError) {
       return Response.json({ ok: false, error: error.message }, { status: 400 });
     }
-    return Response.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo verificar el acceso' }, { status: 400 });
+    void Metrics.httpError('kiosk/verify', 400);
+    return Response.json({ ok: false, error: sanitizeError(error) }, { status: 400 });
   }
 }

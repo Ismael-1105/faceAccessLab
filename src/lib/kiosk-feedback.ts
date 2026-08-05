@@ -165,7 +165,8 @@ export type DenialReason =
   | 'class-cancelled'
   | 'wrong-lab'
   | 'virtual'
-  | 'no-biometric';
+  | 'no-biometric'
+  | 'consent-expired';
 
 export interface DenialInfo {
   /** Codigo institucional que aparece en pantalla y en la bitacora. */
@@ -284,6 +285,13 @@ export const DENIAL_REASONS: Record<DenialReason, DenialInfo> = {
     title: 'Biometría pendiente',
     detail: 'Tu identidad fue verificada, pero aún no tienes tu registro biométrico completo.',
     action: 'Acude a tu docente para registrar tu biometría en el panel.',
+    retryable: false,
+  },
+  'consent-expired': {
+    code: 'R16',
+    title: 'Consentimiento vencido',
+    detail: 'Tu consentimiento biométrico venció o fue revocado y ya no autoriza el uso de tu rostro.',
+    action: 'Renueva tu consentimiento con el responsable del laboratorio.',
     retryable: false,
   },
 };

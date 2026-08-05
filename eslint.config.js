@@ -5,7 +5,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', '.next', '.vercel', '.codegraph', '.opencode'],
+    ignores: ['dist', 'node_modules', '.next', '.vercel', '.codegraph', '.opencode', 'coverage', 'playwright-report', 'test-results'],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

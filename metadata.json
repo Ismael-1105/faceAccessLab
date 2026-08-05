@@ -2,5 +2,5 @@
   "name": "FaceAccess Lab",
   "description": "Sistema inteligente de control de acceso por reconocimiento facial para laboratorios universitarios, con demo interactiva y panel de control administrativo.",
   "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

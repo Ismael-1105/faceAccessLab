@@ -12,7 +12,7 @@ import { api, getToken } from '../lib/api.ts';
 import { useApp } from '../context/AppContext.tsx';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
-async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url: string; key: string } | null> {
+async function uploadToS3(imageBase64: string, studentId: string): Promise<{ key: string } | null> {
   try {
     const res = await fetch('/api/upload', {
       method: 'POST',
@@ -23,7 +23,7 @@ async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url
       body: JSON.stringify({ imageBase64, studentId }),
     });
     const data = await res.json();
-    if (data.ok) return { url: data.url, key: data.key };
+    if (data.ok) return { key: data.key };
     console.error('[Upload] Respuesta no-ok:', data.error || data);
     return null;
   } catch (err) {
@@ -272,8 +272,9 @@ export default function EnrollmentView({ onComplete, onCancel, scheduleId }: Enr
         setRegistering(false);
         return;
       }
-      s3Url = s3Result.url;
+      // photoUrl almacena la clave S3 (privada); la UI la sirve vía /api/photos.
       s3Key = s3Result.key;
+      s3Url = s3Result.key;
 
       const rekogRes = await fetch('/api/rekognition/register', {
         method: 'POST',

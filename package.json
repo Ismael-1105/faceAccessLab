@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "predev": "node scripts/copy-mediapipe-wasm.mjs",
     "dev": "next dev --port 3000",
@@ -14,7 +18,9 @@
     "seed": "tsx scripts/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@aws-amplify/ui-react-liveness": "^3.6.8",
@@ -49,6 +55,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "@playwright/test": "^1.55.0",
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.0",

@@ -39,6 +39,25 @@ export interface Student {
   status: 'allowed' | 'denied';
   avatarInitials: string;
   biometricStatus?: 'pending' | 'registered';
+  biometricUpdatedAt?: string;
+  consentVersion?: string;
+  consentGrantedBy?: string;
+  consentGrantedAt?: string;
+  consentLab?: string;
+  consentExpiresAt?: string;
+  consentRevokedAt?: string;
+}
+
+export type ConsentAction = 'grant' | 'refresh' | 'revoke';
+
+export interface ConsentLog {
+  id: string;
+  action: ConsentAction;
+  version: string;
+  labCode?: string;
+  grantedBy: string;
+  expiresAt?: string;
+  createdAt: string;
 }
 
 export interface AccessLog {

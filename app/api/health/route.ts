@@ -28,17 +28,24 @@ function getCwClient(): CloudWatchClient {
   return cwClient;
 }
 
+/**
+ * GET /api/health
+ *
+ * - Sin sesión (público, usado como ping de conectividad del kiosco):
+ *   responde 200 inmediatamente con estado ligero, sin tocar MongoDB ni AWS.
+ * - Con sesión admin/docente: devuelve el diagnóstico completo (conteos,
+ *   CloudWatch y configuración) para HealthCard y la página de diagnóstico.
+ */
 export async function GET(req: Request) {
   const auth = getAuthPayload(req);
-  if (!auth) {
-    return new Response(JSON.stringify({ error: 'No autorizado' }), {
-      status: 401, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  if (auth.role !== 'admin' && auth.role !== 'docente') {
-    return new Response(JSON.stringify({ error: 'Acceso restringido' }), {
-      status: 403, headers: { 'Content-Type': 'application/json' },
-    });
+  const isStaff = auth && (auth.role === 'admin' || auth.role === 'docente');
+
+  if (!isStaff) {
+    return new Response(JSON.stringify({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      service: 'api',
+    }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   // MongoDB

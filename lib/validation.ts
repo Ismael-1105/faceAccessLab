@@ -14,7 +14,7 @@ export const studentCreateSchema = z.object({
   /** Se hereda de la clase (scheduleId) cuando el docente matricula. */
   lab: z.string().trim().min(1).max(30).optional(),
   labs: z.array(z.string().min(1).max(30)).max(20).optional(),
-  photoUrl: z.string().url().max(500).optional(),
+  photoUrl: z.string().max(500).optional(),
   photoKey: z.string().max(500).optional(),
   matchPercentage: z.number().min(0).max(100).optional(),
   status: z.enum(['allowed', 'denied']).optional(),
@@ -107,6 +107,19 @@ export const academicTermCreateSchema = z.object({
 export const enrollmentCreateSchema = z.object({
   scheduleId: z.string().min(1),
   studentId: z.string().min(1),
+}).strict();
+
+export const loginSchema = z.object({
+  email: email,
+  password: z.string().min(1).max(128),
+  mfaToken: z.string().regex(/^\d{6}$/).optional(),
+}).strict();
+
+export const registerSchema = z.object({
+  email: email,
+  password: z.string().min(6).max(128),
+  name: name,
+  role: z.enum(['docente', 'estudiante']),
 }).strict();
 
 export const denialEvidenceSchema = z.object({

@@ -5,6 +5,8 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Metrics } from './cloudwatch.ts';
+import { logger } from './observability.ts';
 
 const BUCKET = process.env.AWS_S3_BUCKET || 'faceaccess-lab-uploads';
 
@@ -27,6 +29,11 @@ function getClient(): S3Client {
   return s3Client;
 }
 
+/**
+ * Sube una imagen al bucket PRIVADO con cifrado KMS (aws:kms). Devuelve la
+ * CLAVE del objeto, nunca una URL pública: el acceso se sirve únicamente a
+ * través de presigned URLs de corta duración generadas por el backend.
+ */
 export async function uploadImage(
   key: string,
   imageBase64: string,
@@ -37,32 +44,56 @@ export async function uploadImage(
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
   const buffer = Buffer.from(base64Data, 'base64');
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-    })
-  );
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+    ServerSideEncryption: 'aws:kms',
+    ...(process.env.AWS_KMS_KEY_ID ? { SSEKMSKeyId: process.env.AWS_KMS_KEY_ID } : {}),
+  });
 
-  return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+  try {
+    await s3.send(command);
+  } catch (error: unknown) {
+    void Metrics.s3Failure('putObject');
+    logger.error('s3.upload.failed', { error: error instanceof Error ? error.message : 'desconocido' });
+    throw error;
+  }
+
+  return key;
 }
 
-export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
+/**
+ * URL firmada de corta duración (5 min por defecto). El bucket debe estar
+ * bloqueado para acceso público: toda lectura pasa por aquí.
+ */
+export async function getPresignedUrl(key: string, expiresIn = 300): Promise<string> {
   const s3 = getClient();
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
+  try {
+    return await getSignedUrl(s3, command, { expiresIn });
+  } catch (error: unknown) {
+    void Metrics.s3Failure('getSignedUrl');
+    logger.error('s3.presign.failed', { error: error instanceof Error ? error.message : 'desconocido' });
+    throw error;
+  }
 }
 
 export async function deleteImage(key: string): Promise<void> {
   const s3 = getClient();
-  await s3.send(
-    new DeleteObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-    })
-  );
+  try {
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+      })
+    );
+  } catch (error: unknown) {
+    void Metrics.s3Failure('deleteObject');
+    logger.error('s3.delete.failed', { error: error instanceof Error ? error.message : 'desconocido' });
+    throw error;
+  }
 }
 
 export function extractS3Key(url: string): string | null {

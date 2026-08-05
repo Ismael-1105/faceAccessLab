@@ -1,23 +1,50 @@
+# Dependencies
 node_modules/
+
+# Next.js
 .next/
+out/
 dist/
 build/
+
+# Testing
 coverage/
-*.log
 
 # Runtime wasm de MediaPipe, se regenera con scripts/copy-mediapipe-wasm.mjs
 public/mediapipe/
 
+# Environment
 .env
 .env.local
 .env.production
+.env.development.local
+.env.test.local
+.env.production.local
 
+# Local tooling
+.pnpm-store/
+*.tsbuildinfo
+*.log
+.npm/
+.eslintcache
+
+# Editor / OS
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
+# Project tooling
 .codegraph/
 .opencode/
 .impeccable/
-.vscode/
-.vercel
 .aistudio/
+.vercel/
+
+# Local databases / uploads
+uploads/
+
+# Testing
+coverage/
+playwright-report/
+test-results/

@@ -1,16 +1,17 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, CheckCircle, XCircle, SignIn, Clock, CalendarBlank,
   IdentificationBadge, Flask, User, Fingerprint,
   CaretLeft, CaretRight, Database, WarningCircle,
-  GraduationCap, Prohibit, Trash
+  GraduationCap, Prohibit, Trash, ShieldCheck, ShieldWarning, ClockCounterClockwise
 } from '@phosphor-icons/react';
-import type { Student, AccessLog } from '../types.ts';
+import type { Student, AccessLog, ConsentLog } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 import EmptyState from './EmptyState.tsx';
 import BiometricRegisterModal from './BiometricRegisterModal.tsx';
 import { getPhotoSrc } from '../lib/photoUrl.ts';
+import { api } from '../lib/api.ts';
 
 interface StudentDetailViewProps {
   student: Student;
@@ -165,6 +166,47 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [biometricOpen, setBiometricOpen] = useState(false);
   const [biometricStatus, setBiometricStatus] = useState<'pending' | 'registered'>(student.biometricStatus || 'pending');
+  const [consentLogs, setConsentLogs] = useState<ConsentLog[]>([]);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState('');
+
+  const loadConsentLogs = useCallback(() => {
+    api.getConsentLogs(student.id)
+      .then(setConsentLogs)
+      .catch(() => setConsentLogs([]));
+  }, [student.id]);
+
+  useEffect(() => { loadConsentLogs(); }, [loadConsentLogs]);
+
+  // Estado del consentimiento biométrico (Fase 3).
+  const consentActive = !!student.consentVersion
+    && !student.consentRevokedAt
+    && (!student.consentExpiresAt || new Date(student.consentExpiresAt).getTime() > Date.now());
+
+  const handleRevokeBiometric = async () => {
+    setRevoking(true);
+    setRevokeError('');
+    try {
+      const res = await api.revokeBiometric(student.id);
+      onStudentUpdated?.(res.student);
+      setBiometricStatus('pending');
+      setRevokeConfirmOpen(false);
+      loadConsentLogs();
+    } catch (e) {
+      setRevokeError(e instanceof Error ? e.message : 'Error al revocar la biometría');
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  const consentLabel = student.consentRevokedAt
+    ? { text: 'Revocado', cls: 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400' }
+    : !student.consentVersion
+      ? { text: 'Sin consentimiento', cls: 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400' }
+      : consentActive
+        ? { text: 'Vigente', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' }
+        : { text: 'Expirado', cls: 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400' };
 
   const filteredLogs = useMemo(() => {
     let result = studentLogs;
@@ -319,7 +361,93 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
       </div>
 
       {/* ══════════════════════════════════════════
+          PRIVACIDAD Y CONSENTIMIENTO BIOMÉTRICO (Fase 3)
+          ══════════════════════════════════════════ */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-accent-600 dark:text-accent-400" weight="fill" />
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Privacidad y consentimiento biométrico</h3>
+          </div>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-label font-bold ${consentLabel.cls}`}>
+            {student.consentRevokedAt ? <ShieldWarning className="w-3.5 h-3.5" weight="fill" /> : <CheckCircle className="w-3.5 h-3.5" weight="fill" />}
+            Consentimiento {consentLabel.text}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Versión</p>
+            <p className="mt-1 font-mono font-semibold text-zinc-800 dark:text-zinc-200">{student.consentVersion || '—'}</p>
+          </div>
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Laboratorio</p>
+            <p className="mt-1 font-mono font-semibold text-zinc-800 dark:text-zinc-200">{student.consentLab || student.lab || '—'}</p>
+          </div>
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Otorgado por</p>
+            <p className="mt-1 font-semibold text-zinc-800 dark:text-zinc-200 truncate" title={student.consentGrantedBy}>{student.consentGrantedBy || '—'}</p>
+          </div>
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Otorgado el</p>
+            <p className="mt-1 font-semibold text-zinc-800 dark:text-zinc-200">{student.consentGrantedAt ? new Date(student.consentGrantedAt).toLocaleDateString() : '—'}</p>
+          </div>
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Expira el</p>
+            <p className="mt-1 font-semibold text-zinc-800 dark:text-zinc-200">{student.consentExpiresAt ? new Date(student.consentExpiresAt).toLocaleDateString() : '—'}</p>
+          </div>
+          <div>
+            <p className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Últ. registro facial</p>
+            <p className="mt-1 font-semibold text-zinc-800 dark:text-zinc-200">{student.biometricUpdatedAt ? new Date(student.biometricUpdatedAt).toLocaleDateString() : '—'}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-zinc-100 dark:border-zinc-800 pt-4">
+          <p className="text-caption text-zinc-400 dark:text-zinc-500 max-w-md">
+            La revocación elimina la foto (S3) y el embedding facial (Rekognition) de este estudiante.
+            La ficha académica se conserva.
+          </p>
+          <button
+            onClick={() => setRevokeConfirmOpen(true)}
+            disabled={biometricStatus !== 'registered' && !student.consentVersion}
+            className="px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 border border-red-200 dark:border-red-800/40"
+          >
+            <ShieldWarning className="w-4 h-4" weight="fill" />
+            Revocar datos biométricos
+          </button>
+        </div>
+
+        {consentLogs.length > 0 && (
+          <div className="mt-4 border-t border-zinc-100 dark:border-zinc-800 pt-4">
+            <h4 className="text-label font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <ClockCounterClockwise className="w-3.5 h-3.5" weight="fill" /> Historial de consentimiento
+            </h4>
+            <ul className="space-y-1.5">
+              {consentLogs.map(log => (
+                <li key={log.id} className="flex items-center justify-between text-xs gap-2">
+                  <span className={`px-2 py-0.5 rounded-lg text-label font-bold ${
+                    log.action === 'grant' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                    : log.action === 'refresh' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                    : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  }`}>
+                    {log.action === 'grant' ? 'Otorgado' : log.action === 'refresh' ? 'Renovado' : 'Revocado'}
+                  </span>
+                  <span className="text-zinc-600 dark:text-zinc-300 flex-1 truncate" title={log.grantedBy}>
+                    v{log.version} · {log.labCode || '—'} · {log.grantedBy}
+                  </span>
+                  <span className="text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                    {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════
           KPIs — 4 tarjetas en grid
+
           ══════════════════════════════════════════ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
@@ -462,6 +590,19 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
         onConfirm={() => { onDelete?.(student.id); setDeleteConfirmOpen(false); }}
         onCancel={() => setDeleteConfirmOpen(false)}
       />
+
+      <ConfirmDialog
+        open={revokeConfirmOpen}
+        title="Revocar datos biométricos"
+        message={`¿Eliminar la foto y el embedding facial de ${student.name}? Ya no podrá acceder al laboratorio por reconocimiento facial hasta que su biometría se registre de nuevo.`}
+        confirmLabel={revoking ? 'Revocando...' : 'Revocar biometría'}
+        variant="danger"
+        onConfirm={handleRevokeBiometric}
+        onCancel={() => { if (!revoking) { setRevokeConfirmOpen(false); setRevokeError(''); } }}
+      />
+      {revokeError && (
+        <p role="alert" className="text-xs text-red-600 dark:text-red-400 font-medium">{revokeError}</p>
+      )}
 
       <AnimatePresence>
         {biometricOpen && (

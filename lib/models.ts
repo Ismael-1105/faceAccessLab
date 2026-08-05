@@ -34,6 +34,19 @@ export interface IStudent extends Document {
   faceEmbeddingId?: string;
   /** Estado del registro biométrico: pendiente hasta que el docente lo capture. */
   biometricStatus: 'pending' | 'registered';
+  /** Última captura facial (foto + embedding) registrada con éxito. */
+  biometricUpdatedAt?: Date;
+  // ── Consentimiento biométrico (Fase 3) ──
+  /** Versión de la política que aceptó (p. ej. "v1"). */
+  consentVersion?: string;
+  /** Quién matriculó/otorgó el consentimiento (email del actor). */
+  consentGrantedBy?: string;
+  consentGrantedAt?: Date;
+  /** Laboratorio para el que se autorizó el tratamiento biométrico. */
+  consentLab?: string;
+  consentExpiresAt?: Date;
+  /** Si existe, el consentimiento fue revocado. */
+  consentRevokedAt?: Date;
   createdAt: Date;
 }
 
@@ -192,6 +205,36 @@ export interface IRateLimitBucket extends Document {
   expiresAt: Date;
 }
 
+/** Sesión con refresh token revocable (Fase 2: rotación + revocación). */
+export interface ISession extends Document {
+  id: string;
+  userId: string;
+  /** SHA-256 del refresh token opaco. Nunca se guarda el token en claro. */
+  refreshTokenHash: string;
+  userAgent?: string;
+  ip?: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt?: Date;
+}
+
+/** Historial de eventos de consentimiento biométrico (Fase 3). */
+export type ConsentAction = 'grant' | 'refresh' | 'revoke';
+
+export interface IConsentLog extends Document {
+  id: string;
+  studentId: string;
+  action: ConsentAction;
+  /** Versión de la política de consentimiento afectada. */
+  version: string;
+  labCode?: string;
+  /** Actor (email) que ejecutó la acción. */
+  grantedBy: string;
+  /** Expiración del consentimiento tras esta acción (solo grant/refresh). */
+  expiresAt?: Date;
+  createdAt: Date;
+}
+
 // ── Funcionalidad 2: evidencia de denegados e incidentes ─────────────────
 
 export interface IDenialEvidence extends Document {
@@ -259,6 +302,13 @@ const StudentSchema = new Schema<IStudent>({
   avatarInitials: { type: String, required: true },
   faceEmbeddingId: { type: String },
   biometricStatus: { type: String, enum: ['pending', 'registered'], default: 'pending' },
+  biometricUpdatedAt: { type: Date },
+  consentVersion: { type: String },
+  consentGrantedBy: { type: String },
+  consentGrantedAt: { type: Date },
+  consentLab: { type: String },
+  consentExpiresAt: { type: Date },
+  consentRevokedAt: { type: Date },
   createdAt: { type: Date, default: Date.now },
 }, { id: false });
 
@@ -457,6 +507,33 @@ const RateLimitBucketSchema = new Schema<IRateLimitBucket>({
 
 RateLimitBucketSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+const SessionSchema = new Schema<ISession>({
+  id: { type: String, required: true, unique: true },
+  userId: { type: String, required: true },
+  refreshTokenHash: { type: String, required: true, unique: true },
+  userAgent: { type: String },
+  ip: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+  revokedAt: { type: Date },
+}, { id: false });
+
+SessionSchema.index({ userId: 1 });
+SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const ConsentLogSchema = new Schema<IConsentLog>({
+  id: { type: String, required: true, unique: true },
+  studentId: { type: String, required: true },
+  action: { type: String, enum: ['grant', 'refresh', 'revoke'], required: true },
+  version: { type: String, required: true },
+  labCode: { type: String },
+  grantedBy: { type: String, required: true },
+  expiresAt: { type: Date },
+  createdAt: { type: Date, default: Date.now },
+}, { id: false });
+
+ConsentLogSchema.index({ studentId: 1, createdAt: -1 });
+
 export const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Student = mongoose.models.Student || mongoose.model<IStudent>('Student', StudentSchema);
 export const AccessLog = mongoose.models.AccessLog || mongoose.model<IAccessLog>('AccessLog', AccessLogSchema);
@@ -471,3 +548,5 @@ export const Attendance = mongoose.models.Attendance || mongoose.model<IAttendan
 export const AcademicTerm = mongoose.models.AcademicTerm || mongoose.model<IAcademicTerm>('AcademicTerm', AcademicTermSchema);
 export const KioskAttempt = mongoose.models.KioskAttempt || mongoose.model<IKioskAttempt>('KioskAttempt', KioskAttemptSchema);
 export const RateLimitBucket = mongoose.models.RateLimitBucket || mongoose.model<IRateLimitBucket>('RateLimitBucket', RateLimitBucketSchema);
+export const Session = mongoose.models.Session || mongoose.model<ISession>('Session', SessionSchema);
+export const ConsentLog = mongoose.models.ConsentLog || mongoose.model<IConsentLog>('ConsentLog', ConsentLogSchema);

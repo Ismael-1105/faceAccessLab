@@ -9,6 +9,7 @@ import {
   DetectFacesCommand,
 } from '@aws-sdk/client-rekognition';
 import { Metrics } from './cloudwatch.ts';
+import { REKOGNITION_MATCH_THRESHOLD } from './biometrics.ts';
 
 const COLLECTION_ID = 'faceaccess-lab-students';
 
@@ -98,7 +99,7 @@ export async function searchFace(imageBytes: Uint8Array): Promise<FaceMatchResul
         CollectionId: COLLECTION_ID,
         Image: { Bytes: imageBytes },
         MaxFaces: 5,
-        FaceMatchThreshold: 85,
+        FaceMatchThreshold: REKOGNITION_MATCH_THRESHOLD,
       })
     );
 

@@ -1,10 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Student } from '@/src/types';
 import { captureFrame } from '@/lib/capture';
 import { useFaceFraming, type FaceFraming } from '@/src/hooks/useFaceFraming';
-import { playCue } from '@/src/lib/kiosk-sound';
+import { playCue, isSoundEnabled, setSoundEnabled } from '@/src/lib/kiosk-sound';
+import {
+  kioskReducer,
+  stageToLegacyFlow,
+  INITIAL_STAGE,
+  type KioskStage,
+  type KioskEvent,
+} from '@/src/lib/kiosk-machine';
+import { enqueueEvent, flushQueue } from '@/src/lib/kiosk-telemetry';
 import {
   DENIAL_REASONS,
   SCAN_STAGES,
@@ -12,11 +20,14 @@ import {
   type ScanStageId,
 } from '@/src/lib/kiosk-feedback';
 
-export type FlowState = 'idle' | 'framing' | 'liveness' | 'scanning' | 'result';
+/** Flujo legado que la UI actual consume; derivado de la máquina de estados. */
+export type FlowState = ReturnType<typeof stageToLegacyFlow>;
 
 export interface KioskFlow {
-  cameraDenied: boolean;
+  // ── Máquina de estados (Fase 7) ──
+  stage: KioskStage;
   flowState: FlowState;
+  cameraDenied: boolean;
   scannedStudent: Student | null;
   confidence: number;
   scanBlocked: boolean;
@@ -24,21 +35,13 @@ export interface KioskFlow {
   statusHint: string;
   livenessSessionId: string | null;
   kioskAttemptId: string | null;
-  /** Etapa real en curso dentro del escaneo. */
   activeStage: ScanStageId;
-  /** Avance del escaneo, de 0 a 1. */
   scanProgress: number;
-  /** Causa exacta del rechazo, o null si hubo acceso. */
   denialReason: DenialReason | null;
-  /** Encuadre en vivo: instrucciones de acercarse, alejarse o centrarse. */
   framing: FaceFraming;
-  /** Avance del tiempo de encuadre estable exigido antes de verificar, de 0 a 1. */
   holdProgress: number;
-  /** Segundos que faltan para volver solo a la pantalla de espera. */
   resetCountdown: number;
-  /** Intentos fallidos consecutivos; ≥5 aplica un bloqueo temporal extendido. */
   consecutiveDenials: number;
-  /** Clase vigente del laboratorio del kiosco (se muestra antes del acceso). */
   sessionInfo: { subject: string; teacherName: string | null; startTime: string; endTime: string; status: string } | null;
   cameras: MediaDeviceInfo[];
   showSettings: boolean;
@@ -49,6 +52,21 @@ export interface KioskFlow {
   isSuccess: boolean;
   isScanning: boolean;
   showFaceGuide: boolean;
+  // ── Mejoras de entorno (Fase 7) ──
+  /** Cámara activa y entregando frames. */
+  cameraReady: boolean;
+  /** Navegador en línea (navigator.onLine). */
+  isOnline: boolean;
+  /** El backend responde (ping a /api/health). */
+  serverReachable: boolean;
+  /** Modo pantalla completa. */
+  isFullscreen: boolean;
+  toggleFullscreen: () => void;
+  /** Sonido habilitado (refuerzo del resultado visual). */
+  soundEnabled: boolean;
+  toggleSound: () => void;
+  /** Segundos restantes del intento antes de cancelarse automáticamente. */
+  attemptCountdown: number;
   startLiveness: () => void;
   switchCamera: (deviceId: string) => void;
   retryWebcam: () => void;
@@ -60,20 +78,15 @@ export interface KioskFlow {
   handlePrintReceipt: () => void;
 }
 
-/** Encuadre válido sostenido que se exige antes de iniciar la verificación. */
 const HOLD_MS = 1200;
-/** Cadencia con la que avanza la barra de progreso. */
 const PROGRESS_TICK_MS = 100;
-/** Espera antes del reinicio automático, según el desenlace. */
 const RESET_MS = { granted: 6000, denied: 12000 } as const;
-/** Reintentos de la cámara ante errores transitorios (cámara ocupada). */
 const CAMERA_MAX_ATTEMPTS = 5;
 const CAMERA_RETRY_DELAY_MS = 1000;
+/** Tiempo máximo por intento antes de cancelación automática (Fase 7). */
+const ATTEMPT_TIMEOUT_MS = 15000;
+const HEALTH_PING_MS = 15000;
 
-/**
- * Errores de getUserMedia que pueden resolverse solos (la cámara está
- * ocupada por otra aplicación/pestaña o por un stream que aún se libera).
- */
 function isTransientCameraError(err: unknown): boolean {
   if (err && typeof err === 'object' && 'name' in err) {
     const name = String((err as { name?: unknown }).name);
@@ -92,8 +105,8 @@ const IDLE_TEXT = {
 };
 
 export function useKioskFlow(): KioskFlow {
+  const [stage, dispatch] = useReducer(kioskReducer, INITIAL_STAGE);
   const [cameraDenied, setCameraDenied] = useState(false);
-  const [flowState, setFlowState] = useState<FlowState>('idle');
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null);
   const [confidence, setConfidence] = useState(0);
   const [scanBlocked, setScanBlocked] = useState(false);
@@ -108,39 +121,45 @@ export function useKioskFlow(): KioskFlow {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState('');
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [serverReachable, setServerReachable] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [soundEnabled, setSoundState] = useState(isSoundEnabled);
+  const [attemptCountdown, setAttemptCountdown] = useState(0);
+  const [cameraActive, setCameraActive] = useState(false);
+
+  const flowState: FlowState = stageToLegacyFlow(stage);
 
   const scanningRef = useRef(false);
   const startingRef = useRef(false);
-  const flowStateRef = useRef<FlowState>('idle');
   const stageTargetRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const cameraDeniedRef = useRef(false);
   const selectedCameraRef = useRef('');
   const performScanRef = useRef<(frameArg?: string) => void>(() => {});
-  /** Instante de inicio del escaneo para medir la latencia del reconocimiento. */
   const scanStartRef = useRef(0);
+  const attemptStartRef = useRef(0);
 
-  const setFlow = useCallback((s: FlowState) => {
-    flowStateRef.current = s;
-    setFlowState(s);
-  }, []);
+  const send = useCallback((event: KioskEvent) => dispatch(event), []);
 
-  // El detector solo consume CPU mientras se busca el encuadre.
-  const framing = useFaceFraming(videoRef, flowState === 'framing' && !scanBlocked && !cameraDenied);
+  const framing = useFaceFraming(
+    videoRef,
+    flowState === 'framing' && !scanBlocked && !cameraDenied && isOnline,
+  );
 
   const stopWebcam = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    setCameraActive(false);
   }, []);
 
   const startWebcam = useCallback(async (deviceId?: string, attempt = 1): Promise<boolean> => {
     try {
-      // Libera cualquier stream interno previo antes de pedir la cámara, para
-      // no abrir dos streams sobre el mismo dispositivo (evita NotReadableError).
       stopWebcam();
+      send({ type: 'CAMERA_STARTING' });
       const constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: 1280 },
@@ -156,29 +175,25 @@ export function useKioskFlow(): KioskFlow {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+      setCameraActive(true);
       setCameraDenied(false);
-      if (flowStateRef.current === 'idle') setFlow('framing');
+      send({ type: 'CAMERA_READY' });
       return true;
     } catch (err) {
-      // La cámara puede estar momentáneamente ocupada (otra pestaña, otra app o
-      // un stream anterior aún liberándose): reintenta con backoff antes de rendirse.
       if (attempt < CAMERA_MAX_ATTEMPTS && isTransientCameraError(err)) {
         await new Promise<void>(resolve => setTimeout(resolve, CAMERA_RETRY_DELAY_MS * attempt));
         return startWebcam(deviceId, attempt + 1);
       }
-      // Un deviceId concreto puede quedar obsoleto tras cambiar el dispositivo;
-      // reintenta con la cámara por defecto antes de rendirse.
       if (deviceId) {
-        console.warn('[Kiosk] Falló la cámara seleccionada; reintentando con la predeterminada:', err);
         return startWebcam(undefined, CAMERA_MAX_ATTEMPTS);
       }
-      console.error('[Kiosk] Error cámara:', err);
+      enqueueEvent('kiosk.camera_error', { attempt });
+      send({ type: 'CAMERA_ERROR' });
       setCameraDenied(true);
       return false;
     }
-  }, [setFlow, stopWebcam]);
+  }, [send, stopWebcam]);
 
-  /** Vuelve a intentar abrir la cámara tras una negación o error transitorio. */
   const retryWebcam = useCallback(() => {
     setCameraDenied(false);
     return startWebcam(selectedCamera || undefined);
@@ -191,46 +206,40 @@ export function useKioskFlow(): KioskFlow {
     setShowSettings(false);
   }, [stopWebcam, startWebcam]);
 
-  const toggleSettings = useCallback(() => {
-    setShowSettings(prev => !prev);
-  }, []);
+  const toggleSettings = useCallback(() => setShowSettings(prev => !prev), []);
 
   const toggleScanBlocked = useCallback(() => {
     setScanBlocked(prev => {
       const next = !prev;
-      setFlow(next ? 'idle' : 'framing');
+      // Pausa/reanuda la detección; la máquina vuelve a encuadre o a reposo.
+      send(next ? { type: 'RESET' } : { type: 'CAMERA_READY' });
       return next;
     });
-  }, [setFlow]);
+  }, [send]);
 
-  /** Fija la etapa en curso y hacia dónde debe avanzar la barra. */
-  const goToStage = useCallback((stage: ScanStageId) => {
-    stageTargetRef.current = STAGE_TARGET[stage];
-    setActiveStage(stage);
+  const goToStage = useCallback((stageId: ScanStageId) => {
+    stageTargetRef.current = STAGE_TARGET[stageId];
+    setActiveStage(stageId);
   }, []);
 
-  /** Renderiza un acceso concedido que ya fue decidido y persistido por el backend. */
   const finishGranted = useCallback((student: Student, conf: number) => {
     scanningRef.current = false;
     setScannedStudent(student);
     setConfidence(conf);
     setDenialReason(null);
     setScanProgress(1);
-    setFlow('result');
+    send({ type: 'GRANTED' });
     setResetCountdown(Math.round(RESET_MS.granted / 1000));
     playCue('granted');
-    console.log(`[Kiosk] ACCESO CONCEDIDO: ${student.name} (${conf.toFixed(1)}%)`);
-  }, [setFlow]);
+  }, [send]);
 
-  /** Cierra el ciclo con acceso denegado, guardando la causa real. */
   const finishDenied = useCallback((reason: DenialReason, conf: number, student: Student | null = null) => {
     scanningRef.current = false;
     setScannedStudent(student);
     setConfidence(conf);
     setDenialReason(reason);
     setScanProgress(1);
-    setFlow('result');
-    // Bloqueo temporal: 3 fallos consecutivos de liveness/red = 15s; 5+ = 30s (comportamiento sospechoso).
+    send({ type: 'DENIED' });
     setConsecutiveDenials(prev => {
       const next = prev + 1;
       const base = Math.round(RESET_MS.denied / 1000);
@@ -239,26 +248,23 @@ export function useKioskFlow(): KioskFlow {
       return next;
     });
     playCue('denied');
-    console.log(`[Kiosk] ACCESO DENEGADO: ${DENIAL_REASONS[reason].code} ${DENIAL_REASONS[reason].title}`);
-  }, [setFlow]);
+  }, [send]);
 
   const startLiveness = useCallback(async () => {
     if (startingRef.current || scanningRef.current) return;
     startingRef.current = true;
     goToStage('liveness');
+    attemptStartRef.current = Date.now();
 
     try {
-      const res = await fetch('/api/kiosk/attempt', {
-        method: 'POST',
-      });
+      const res = await fetch('/api/kiosk/attempt', { method: 'POST' });
       const data = await res.json();
       if (data.ok && data.sessionId && data.attemptId) {
         setKioskAttemptId(data.attemptId);
         setLivenessSessionId(data.sessionId);
-        setFlow('liveness');
+        send({ type: 'LIVENESS_STARTED' });
         playCue('ready');
       } else {
-        console.error('[Kiosk] Error creando sesión liveness:', data.error);
         finishDenied('network-error', 0);
       }
     } catch (err) {
@@ -267,27 +273,22 @@ export function useKioskFlow(): KioskFlow {
     } finally {
       startingRef.current = false;
     }
-  }, [finishDenied, goToStage, setFlow]);
+  }, [finishDenied, goToStage, send]);
 
   const handleLivenessSuccess = useCallback(() => {
     setLivenessSessionId(null);
-    console.log('[Kiosk] Desafío liveness completado; el backend validará el resultado.');
     performScanRef.current();
   }, []);
 
-  const handleLivenessFail = useCallback((message: string) => {
+  const handleLivenessFail = useCallback((_message: string) => {
     setLivenessSessionId(null);
-    console.warn('[Kiosk] Liveness no superado:', message);
-    // El navegador no decide la denegación. El backend consulta el resultado
-    // oficial de la sesión AWS, persiste AccessLog/evidencia/incidente y devuelve
-    // la causa autoritativa que debe mostrarse.
     performScanRef.current();
   }, []);
 
   const performScan = useCallback(async (frameArg?: string) => {
     if (scanningRef.current) return;
     scanningRef.current = true;
-    setFlow('scanning');
+    send({ type: 'MATCHING_STARTED' });
     goToStage('capture');
     setScanProgress(0);
     scanStartRef.current = performance.now();
@@ -313,10 +314,10 @@ export function useKioskFlow(): KioskFlow {
         body: JSON.stringify({ attemptId: kioskAttemptId, imageBase64: frame }),
       });
       const result = await res.json();
-      console.log('[Kiosk] Resultado autoritativo:', result.allowed ? 'allowed' : 'denied', result.reason);
 
       const finalConfidence = result.confidence || 0;
       goToStage('authorize');
+      send({ type: 'PERMISSION_STARTED' });
       if (!result.ok || !result.allowed || !result.student) {
         finishDenied((result.reason || 'network-error') as DenialReason, finalConfidence, result.student || null);
         return;
@@ -326,7 +327,7 @@ export function useKioskFlow(): KioskFlow {
       console.error('[Kiosk] Error en compare:', err);
       finishDenied('network-error', 0);
     }
-  }, [kioskAttemptId, finishDenied, finishGranted, goToStage, setFlow]);
+  }, [kioskAttemptId, finishDenied, finishGranted, goToStage, send]);
 
   useEffect(() => {
     performScanRef.current = performScan;
@@ -352,21 +353,20 @@ export function useKioskFlow(): KioskFlow {
     setResetCountdown(0);
     setConsecutiveDenials(0);
     goToStage('capture');
-    setFlow(cameraDenied || scanBlocked ? 'idle' : 'framing');
-  }, [cameraDenied, goToStage, scanBlocked, setFlow]);
+    send({ type: 'RESET' });
+    if (!cameraDenied && !scanBlocked) send({ type: 'CAMERA_READY' });
+  }, [cameraDenied, goToStage, scanBlocked, send]);
 
-  // Inicialización: sesión vigente del laboratorio, cámaras y webcam.
+  // Inicialización: sesión del lab, cámaras, webcam, conectividad y pantalla completa.
   useEffect(() => {
     let cancelled = false;
 
-    // Sesión vigente del laboratorio (Funcionalidad 7): se muestra antes del acceso.
-    // La ubicación del kiosco se resuelve exclusivamente en el servidor.
     fetch('/api/kiosk/session')
       .then(r => r.json())
       .then((data: { session: KioskFlow['sessionInfo'] | null }) => {
         if (!cancelled) setSessionInfo(data.session);
       })
-      .catch(err => console.error('[Kiosk] Error cargando sesión:', err));
+      .catch(() => {});
 
     navigator.mediaDevices?.enumerateDevices?.().then(devices => {
       if (!cancelled) setCameras(devices.filter(d => d.kind === 'videoinput'));
@@ -374,8 +374,6 @@ export function useKioskFlow(): KioskFlow {
 
     startWebcam();
 
-    // Si otra pestaña o app tenía la cámara, al volver a esta la pestaña el
-    // dispositivo se libera solo: reintenta en cuanto recupere el foco.
     const onVisibility = () => {
       if (document.visibilityState === 'visible' && cameraDeniedRef.current) {
         startWebcam(selectedCameraRef.current || undefined);
@@ -383,22 +381,81 @@ export function useKioskFlow(): KioskFlow {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
+    const onOffline = () => {
+      setIsOnline(false);
+      enqueueEvent('kiosk.offline');
+    };
+    const onOnline = () => {
+      setIsOnline(true);
+      enqueueEvent('kiosk.online');
+      void flushQueue();
+    };
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+
+    const onFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFullscreen);
+
     return () => {
       cancelled = true;
       stopWebcam();
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('fullscreenchange', onFullscreen);
     };
   }, [startWebcam, stopWebcam]);
 
-  // Disparo automático: el encuadre debe sostenerse, no basta un cuadro suelto.
+  // OFFLINE_CHANGED hacia la máquina + telemetría.
+  useEffect(() => {
+    dispatch({ type: 'OFFLINE_CHANGED', online: isOnline });
+  }, [isOnline]);
+
+  // Ping de salud del backend (conectividad servidor, no solo red).
+  useEffect(() => {
+    let cancelled = false;
+    const ping = () => {
+      fetch('/api/health', { method: 'GET' })
+        .then(r => { if (!cancelled) setServerReachable(r.ok); })
+        .catch(() => { if (!cancelled) setServerReachable(false); });
+    };
+    ping();
+    const id = setInterval(ping, HEALTH_PING_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Tiempo máximo por intento: cancelación automática (Fase 7).
+  useEffect(() => {
+    if (flowState !== 'liveness' && flowState !== 'scanning') {
+      setAttemptCountdown(0);
+      return;
+    }
+    const elapsed = () => Math.max(0, ATTEMPT_TIMEOUT_MS - (Date.now() - attemptStartRef.current)) / 1000;
+    setAttemptCountdown(Math.ceil(elapsed()));
+    const id = setInterval(() => {
+      setAttemptCountdown(Math.ceil(elapsed()));
+      if (Date.now() - attemptStartRef.current >= ATTEMPT_TIMEOUT_MS) {
+        clearInterval(id);
+        scanningRef.current = false;
+        startingRef.current = false;
+        enqueueEvent('kiosk.attempt_timeout');
+        send({ type: 'TIMEOUT' });
+        setResetCountdown(5);
+        setTimeout(() => resetScan(), 5000);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [flowState, resetScan, send]);
+
+  // Disparo automático: el encuadre debe sostenerse.
   useEffect(() => {
     if (flowState !== 'framing' || scanBlocked) return;
     if (framing.status !== 'ready' || framing.stableMs < HOLD_MS) return;
+    send({ type: 'FACE_ALIGNED' });
     startLiveness();
-  }, [flowState, scanBlocked, framing.status, framing.stableMs, startLiveness]);
+  }, [flowState, scanBlocked, framing.status, framing.stableMs, startLiveness, send]);
 
-  // Avance de la barra: se acerca a la meta de la etapa sin superarla, porque
-  // el tiempo de respuesta de Rekognition no se conoce de antemano.
+  // Avance de la barra de progreso.
   useEffect(() => {
     if (flowState !== 'liveness' && flowState !== 'scanning') return;
     const id = setInterval(() => {
@@ -411,7 +468,7 @@ export function useKioskFlow(): KioskFlow {
     return () => clearInterval(id);
   }, [flowState]);
 
-  // Reinicio automático del kiosco tras mostrar el desenlace.
+  // Reinicio automático tras el desenlace.
   useEffect(() => {
     if (flowState !== 'result') return;
     if (resetCountdown <= 0) {
@@ -421,6 +478,21 @@ export function useKioskFlow(): KioskFlow {
     const id = setTimeout(() => setResetCountdown(c => c - 1), 1000);
     return () => clearTimeout(id);
   }, [flowState, resetCountdown, resetScan]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    } else {
+      void document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  const toggleSound = useCallback(() => {
+    setSoundState(prev => {
+      setSoundEnabled(!prev);
+      return !prev;
+    });
+  }, []);
 
   const handlePrintReceipt = useCallback(() => {
     const denial = denialReason ? DENIAL_REASONS[denialReason] : null;
@@ -452,11 +524,15 @@ Resultados:
 
   const isSuccess = flowState === 'result' && denialReason === null;
   const isError = flowState === 'result' && denialReason !== null;
-  const isScanning = flowState === 'scanning' || flowState === 'liveness';
+  const isScanning = flowState === 'liveness' || flowState === 'scanning';
   const showFaceGuide = flowState === 'idle' || flowState === 'framing';
   const holdProgress = flowState === 'framing' ? Math.min(1, framing.stableMs / HOLD_MS) : 0;
+  const cameraReady = cameraActive;
 
   const guidance = (() => {
+    if (!isOnline || !serverReachable) {
+      return { message: 'Sin conexión', hint: 'El kiosco reintentará automáticamente' };
+    }
     if (scanBlocked) return { message: 'Detección en pausa', hint: 'Pulsa Reanudar para continuar' };
     if (flowState === 'framing') {
       if (framing.status === 'loading') return { message: 'Preparando la detección', hint: 'Un momento' };
@@ -467,15 +543,16 @@ Resultados:
     }
     if (flowState === 'liveness') return { message: 'Prueba de vida en curso', hint: 'Sigue las indicaciones en pantalla' };
     if (flowState === 'scanning') {
-      const stage = SCAN_STAGES.find(s => s.id === activeStage);
-      return { message: stage?.label ?? 'Verificando', hint: stage?.desc ?? '' };
+      const s = SCAN_STAGES.find(x => x.id === activeStage);
+      return { message: s?.label ?? 'Verificando', hint: s?.desc ?? '' };
     }
     return IDLE_TEXT;
   })();
 
   return {
-    cameraDenied,
+    stage,
     flowState,
+    cameraDenied,
     scannedStudent,
     confidence,
     scanBlocked,
@@ -500,6 +577,14 @@ Resultados:
     isSuccess,
     isScanning,
     showFaceGuide,
+    cameraReady,
+    isOnline,
+    serverReachable,
+    isFullscreen,
+    toggleFullscreen,
+    soundEnabled,
+    toggleSound,
+    attemptCountdown,
     startLiveness,
     switchCamera,
     retryWebcam,

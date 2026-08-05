@@ -1,3 +1,4 @@
+import { corsOptions } from '@/lib/cors';
 import {
   handleGetLabs,
   handleCreateLab,
@@ -5,15 +6,8 @@ import {
   handleDeleteLab,
 } from '@/lib/handlers';
 
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+export function OPTIONS(req: Request) {
+  return corsOptions(req);
 }
 
 export async function GET(req: Request) {

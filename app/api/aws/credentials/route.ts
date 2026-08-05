@@ -4,6 +4,7 @@ import { checkDistributedRateLimit, getClientAddress } from '@/lib/distributed-r
 import { getKioskAttemptToken } from '@/lib/kiosk-attempt-cookie';
 import { getActor } from '@/lib/rbac';
 import { assertKioskAttemptForCredentials } from '@/lib/kiosk-verification';
+import { sanitizeError } from '@/lib/errors';
 
 const DURATION_SECONDS = 3600;
 
@@ -76,8 +77,7 @@ export async function GET(req: Request) {
       expiration: creds.Expiration,
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Error desconocido';
-    return new Response(JSON.stringify({ ok: false, error: msg }), {
+    return new Response(JSON.stringify({ ok: false, error: sanitizeError(error) }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });
   }

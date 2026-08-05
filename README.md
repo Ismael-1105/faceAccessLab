@@ -2,81 +2,126 @@
 
 Sistema inteligente de control de acceso por reconocimiento facial para laboratorios universitarios.
 
-## Roles de usuario
+El kiosco (pantalla de terminal) verifica el rostro del estudiante con **AWS Rekognition + Face Liveness** y decide si puede acceder al laboratorio según su matrícula y horario. El portal del docente permite gestionar alumnos, clases, laboratorios, historial de accesos, alertas, incidentes y auditoría.
+
+## Roles
 
 | Rol | Interfaz | Acceso |
 |---|---|---|
-| **Estudiante** | Kiosco de pantalla unica | Solo mira a la camara conectada a la PC. El sistema verifica si esta en la lista de autorizados. |
-| **Docente** | Portal administrativo | Dashboard, gestion de alumnos, historial de accesos, calibracion y arquitectura cloud. |
-
-## Pantallas
-
-- **Kiosco (DemoView)** — Camara, pipeline de escaneo facial (deteccion de rostro, prueba de vida, comparacion biometrica, verificacion de permisos), resultado concedido/denegado.
-- **Dashboard (AdminView)** — Metricas, graficos, tabla de alumnos con toggle de acceso, historial con exportacion CSV, calibracion del sensor.
-- **Arquitectura (ArchitectureView)** — Consola de servicios AWS con panel de telemetria CloudWatch.
-- **Inicio (HomeView)** — Landing page del portal docente con hero, pipeline interactivo y modal de auditoria.
+| **Estudiante** | Kiosco (`/kiosco`) | Solo mira a la cámara. El sistema verifica identidad, prueba de vida y permisos. |
+| **Docente** | Portal administrativo (`/docente`) | Dashboard, gestión de alumnos/clases/labs, historial, alertas, reportes y auditoría. |
+| **Administrador** | Portal administrativo (`/docente`) | Igual que el docente, más gestión de usuarios y suspensión/reactivación. |
 
 ## Stack
 
-React 19, TypeScript 5.8, Vite 6, TailwindCSS 4, Motion, Phosphor Icons, Gemini API
+- **Next.js 16** (App Router, API routes, output `standalone`) + **React 19**
+- **TypeScript 5.8**
+- **TailwindCSS 4** + **Motion** + **Phosphor Icons**
+- **MongoDB Atlas** (Mongoose 9)
+- **AWS**: Rekognition (comparación + Face Liveness), S3 (fotos/evidencias), SNS (alertas), CloudWatch (métricas), STS (credenciales temporales del kiosco)
+- **Vitest** para pruebas
 
 ## Requisitos
 
-- Node.js 18+
-- pnpm
+- **Node.js ≥ 20** (recomendado 20+; CI usa 22)
+- **pnpm 10** (ver `packageManager` en `package.json`)
 
-## Instalacion
+## Instalación
 
 ```bash
+git clone <url-del-repositorio>
+cd faceaccess-lab
 pnpm install
 ```
 
-## Variables de entorno
+> El runtime WASM de MediaPipe se copia automáticamente a `public/mediapipe/` con `pnpm dev`/`pnpm build` (`scripts/copy-mediapipe-wasm.mjs`).
 
-Crear `.env`:
+## Configuración de entorno
 
+1. Copia la plantilla:
+
+```bash
+cp .env.example .env
 ```
-GEMINI_API_KEY=tu_api_key
+
+2. Completa al menos:
+   - `MONGODB_URI` — cadena de conexión de MongoDB Atlas.
+   - `JWT_SECRET` — clave del token; **obligatoria en producción**.
+   - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` — credenciales IAM mínimas.
+   - `AWS_S3_BUCKET` / `AWS_SNS_TOPIC_ARN` — bucket de fotos y ARN del tópico de alertas.
+
+3. (Opcional) Siembra datos de prueba:
+
+```bash
+pnpm seed
 ```
+
+Consulta `docs/environment-variables.md` para la descripción completa de cada variable.
 
 ## Ejecutar
 
 ```bash
-pnpm dev       # Desarrollo (Vite)
-pnpm build     # Build produccion
-pnpm preview   # Previsualizar build
+pnpm dev        # Servidor de desarrollo en http://localhost:3000
+pnpm build      # Build de producción
+pnpm start      # Servir el build de producción
 ```
 
-## Imagenes
+Accesos:
 
-Las imagenes se colocan en `public/images/`. Ver `public/images/LEEME.txt` para los nombres requeridos. Si una imagen falta, se usa `camera-feed-bg.jpg` como fallback automatico.
+- Kiosco: `http://localhost:3000/kiosco`
+- Portal: `http://localhost:3000/login` → `/docente`
+
+### Credenciales de demostración
+
+| Rol | Correo | Contraseña |
+|---|---|---|
+| Admin | `admin@faceaccess.lab` | definida en el seed |
+| Docente | `docente@faceaccess.lab` | definida en el seed |
+
+## Scripts
+
+| Comando | Descripción |
+|---|---|
+| `pnpm dev` | Servidor de desarrollo (puerto 3000) |
+| `pnpm build` | Build de producción (prepara el runtime WASM) |
+| `pnpm start` | Sirve el build |
+| `pnpm lint` | ESLint sobre todo el proyecto |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm test` | Vitest (unit + integración) |
+| `pnpm test:coverage` | Tests con cobertura |
+| `pnpm seed` | Poblado de datos de prueba |
+
+## Estructura del proyecto
 
 ```
-public/images/
-  camera-feed-bg.jpg
-  scan-demo-profile.jpg
-  home-hero-preview.jpg
-  default-avatar.jpg
-  students/
-    ismael-gonzalez.jpg
-    alejandro-morales.jpg
-    sofia-villarreal.jpg
-    julian-rivas.jpg
-    persona-desconocida.jpg
-```
-
-## Estructura
-
-```
+app/
+  api/                    # API routes (auth, kiosk, students, schedules, labs, logs, ...)
+  kiosco/                 # Terminal de acceso (estudiante)
+  login/, recuperar/      # Autenticación del portal
+  docente/                # Portal administrativo (protegido por proxy.ts)
+lib/                      # Lógica de servidor: auth, rbac, models, rekognition, s3, ...
 src/
-  App.tsx                    # Raiz, estado global, temas claro/oscuro
-  index.css                  # TailwindCSS, tokens de diseno
-  types.ts                   # Interfaces: Student, AccessLog, CloudService
-  data.ts                    # Datos de prueba
-  components/
-    Header.tsx               # Barra de navegacion (solo portal docente)
-    HomeView.tsx             # Landing page
-    DemoView.tsx             # Kiosco de reconocimiento facial
-    AdminView.tsx            # Panel administrativo
-    ArchitectureView.tsx     # Consola de servicios AWS
+  components/             # Vistas y componentes React del portal
+  context/                # Estado global (AppContext)
+  hooks/                  # useKioskFlow, useCameraPermission, useFaceFraming
+  lib/                    # kiosk-feedback, liveness-display-text, api client
+proxy.ts                  # Middleware de protección de rutas
+vitest.config.ts          # Configuración de pruebas
 ```
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| `docs/architecture.md` | Arquitectura general, modelos de datos y servicios |
+| `docs/authentication.md` | Autenticación, JWT, RBAC y MFA |
+| `docs/biometric-flow.md` | Pipeline de verificación facial del kiosco |
+| `docs/environment-variables.md` | Variables de entorno |
+| `docs/deployment.md` | Despliegue (Vercel) y CI/CD |
+| `docs/testing.md` | Cómo correr y escribir pruebas |
+| `docs/security.md` | Controles de seguridad y amenazas |
+| `docs/privacy.md` | Política de privacidad y datos biométricos |
+
+## Licencia
+
+Proyecto académico (capstone). Sin licencia de uso comercial.

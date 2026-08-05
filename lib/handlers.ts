@@ -1,9 +1,7 @@
 import { connectDB } from './db.ts';
 import { User, Student, AccessLog, Alert, Lab, Schedule, Enrollment, DenialEvidence, Incident, Attendance, AcademicTerm } from './models.ts';
-import { hashPassword, comparePassword, generateToken, verifyToken, getTokenFromRequest } from './auth.ts';
+import { hashPassword, comparePassword, generateToken, verifyToken, getTokenFromRequest, readRefreshToken, jsonResponse, errorResponse } from './auth.ts';
 import { v4 as uuidv4 } from 'uuid';
-import { deleteImage } from './s3.ts';
-import { deleteFace } from './rekognition.ts';
 import {
   studentCreateSchema,
   userCreateSchema,
@@ -26,130 +24,44 @@ import { getPresignedUrl } from './s3.ts';
 import { alertIdentifierFilter } from './alerts.ts';
 
 export async function handleLogin(req: Request): Promise<Response> {
-  const { jsonResponse, errorResponse } = await import('./auth.ts');
-  const { verifyTotp } = await import('./totp.ts');
-  await connectDB();
-
-  const { email, password, mfaToken } = await req.json() as { email?: string; password?: string; mfaToken?: string };
-  if (!email || !password) {
-    return errorResponse('Email y contraseña son requeridos', 400);
+  const { loginSchema } = await import('./validation.ts');
+  const { authService } = await import('../src/modules/auth/auth.service.ts');
+  const { sendJson } = await import('../src/shared/http.ts');
+  const raw = await req.json().catch(() => null);
+  const parsed = loginSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    return sendJson({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }, 400);
   }
-
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) {
-    return errorResponse('Credenciales inválidas', 401);
-  }
-
-  // Cuentas suspendidas o inactivas no pueden iniciar sesión.
-  if (user.status && user.status !== 'active') {
-    return errorResponse(user.status === 'suspended' ? 'Cuenta suspendida. Contacta al administrador.' : 'Cuenta inactiva. Contacta al administrador.', 403);
-  }
-
-  const validPassword = await comparePassword(password, user.passwordHash);
-  if (!validPassword) {
-    return errorResponse('Credenciales inválidas', 401);
-  }
-
-  // Si el usuario tiene MFA habilitado, se exige el código antes de emitir el token.
-  if (user.mfaEnabled) {
-    if (!mfaToken || !user.mfaSecret || !verifyTotp(user.mfaSecret, mfaToken)) {
-      return jsonResponse({
-        mfaRequired: true,
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          studentId: user.studentId,
-          labCode: user.labCode,
-        },
-      });
-    }
-  }
-
-  const token = generateToken({
-    userId: user._id.toString(),
-    email: user.email,
-    role: user.role,
-    studentId: user.studentId,
-    labCode: user.labCode,
-  });
-
-  await recordAudit({
-    ...auditContext({ email: user.email, role: user.role }, req),
-    action: 'auth.login',
-    targetType: 'user',
-    targetId: user._id.toString(),
-    details: 'Inicio de sesión exitoso',
-  });
-
-  return jsonResponse({
-    token,
-    user: {
-      id: user._id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      studentId: user.studentId,
-      labCode: user.labCode,
-    },
-  });
+  const result = await authService.login(req, parsed.data);
+  return sendJson(result.body, result.status, { cookies: result.cookies });
 }
 
 export async function handleLogout(req: Request): Promise<Response> {
-  const { jsonResponse, errorResponse } = await import('./auth.ts');
-  const actor = await tryAuthenticate(req);
-  if (!actor) return errorResponse('No autorizado', 401);
-
-  await recordAudit({
-    ...auditContext({ email: actor.email, role: actor.role }, req),
-    action: 'auth.logout',
-    targetType: 'user',
-    targetId: actor.userId,
-    details: 'Cierre de sesión',
-  });
-
-  return jsonResponse({ ok: true, message: 'Sesión cerrada' });
+  const { authService } = await import('../src/modules/auth/auth.service.ts');
+  const { sendJson } = await import('../src/shared/http.ts');
+  const result = await authService.logout(req);
+  return sendJson(result.body, result.status, { cookies: result.cookies });
 }
 
 export async function handleRegister(req: Request): Promise<Response> {
-  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  const { errorResponse } = await import('./auth.ts');
+  const { registerSchema } = await import('./validation.ts');
+  const { authService } = await import('../src/modules/auth/auth.service.ts');
+  const { sendJson } = await import('../src/shared/http.ts');
+  const { requireAdmin } = await import('./rbac.ts');
+  let actor;
   try {
-    await requireAdmin(req);
+    actor = requireAdmin(req);
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
-
-  await connectDB();
-
-  const { email, password, name, role } = await req.json() as {
-    email?: string; password?: string; name?: string; role?: string;
-  };
-
-  if (!email || !password || !name || !role) {
-    return errorResponse('Todos los campos son requeridos', 400);
+  const raw = await req.json().catch(() => null);
+  const parsed = registerSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    return errorResponse(parsed.error.issues[0]?.message ?? 'Datos inválidos', 400);
   }
-
-  if (!['docente', 'estudiante'].includes(role)) {
-    return errorResponse('Rol inválido', 400);
-  }
-
-  const existing = await User.findOne({ email: email.toLowerCase() });
-  if (existing) {
-    return errorResponse('El email ya está registrado', 409);
-  }
-
-  const passwordHash = await hashPassword(password);
-  const user = await User.create({ email: email.toLowerCase(), passwordHash, name, role });
-
-  return jsonResponse({
-    user: {
-      id: user._id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
-  }, 201);
+  const result = await authService.register(actor, parsed.data);
+  return sendJson(result.body, result.status);
 }
 
 export async function handleGetUsers(req: Request): Promise<Response> {
@@ -183,6 +95,7 @@ export async function handleCreateUser(req: Request): Promise<Response> {
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'user')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   const body = await req.json() as Record<string, unknown>;
 
@@ -228,6 +141,7 @@ export async function handleUpdateUser(req: Request): Promise<Response> {
   if (!actor || actor.role !== 'admin') {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'user')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -286,6 +200,7 @@ export async function handleDeleteUser(req: Request): Promise<Response> {
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'user')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id?: string };
@@ -318,6 +233,7 @@ export async function handleUpdateUserStatus(req: Request): Promise<Response> {
   if (!actor || actor.role !== 'admin') {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'user')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id, status } = await req.json() as { id?: string; status?: string };
@@ -372,6 +288,7 @@ export async function handleCreateLab(req: Request): Promise<Response> {
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'lab')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -425,6 +342,7 @@ export async function handleUpdateLab(req: Request): Promise<Response> {
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'lab')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -475,6 +393,7 @@ export async function handleDeleteLab(req: Request): Promise<Response> {
   } catch {
     return errorResponse('Acceso restringido a administradores', 403);
   }
+  if (await mutationRateLimited(req, 'lab')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id?: string };
@@ -519,6 +438,15 @@ async function tryAuthenticate(req: Request) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Rate limit distribuido para mutaciones sensibles (por IP). Devuelve true si
+ * la petición debe bloquearse (429).
+ */
+async function mutationRateLimited(req: Request, bucket: string, max = 30): Promise<boolean> {
+  const { checkDistributedRateLimit, getClientAddress } = await import('./distributed-rate-limit.ts');
+  return !(await checkDistributedRateLimit(`mut:${bucket}:${getClientAddress(req)}`, max));
 }
 
 /** Contexto común de auditoría: quién, desde dónde y desde qué navegador. */
@@ -598,6 +526,7 @@ export async function handleCreateStudent(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'student')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -642,6 +571,11 @@ export async function handleCreateStudent(req: Request): Promise<Response> {
     labs: inheritedLabs,
   });
 
+  // Fase 3: el registro del estudiante otorga el consentimiento biométrico
+  // (quién, cuándo, lab, versión y expiración).
+  const { grantConsent } = await import('./consent.ts');
+  await grantConsent(studentId, actor, student.lab);
+
   // Inscripción automática en la clase del docente (F1).
   if (scheduleForEnroll) {
     const existing = await Enrollment.findOne({ scheduleId: scheduleForEnroll.id, studentId });
@@ -666,7 +600,8 @@ export async function handleCreateStudent(req: Request): Promise<Response> {
     after: JSON.stringify({ lab: student.lab, scheduleId: data.scheduleId || null }),
   });
 
-  return jsonResponse(student, 201);
+  const freshStudent = await Student.findOne({ id: studentId });
+  return jsonResponse(freshStudent ?? student, 201);
 }
 
 /** Verifica que el docente tenga inscrito al estudiante en alguna de sus clases. */
@@ -681,6 +616,7 @@ export async function handleUpdateStudent(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'student')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id, ...updates } = await req.json() as { id: string; [key: string]: unknown };
@@ -722,6 +658,7 @@ export async function handleToggleStudent(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'student')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id: string };
@@ -760,6 +697,7 @@ export async function handleDeleteStudent(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'student')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id: string };
@@ -778,15 +716,10 @@ export async function handleDeleteStudent(req: Request): Promise<Response> {
     return errorResponse('Estudiante no encontrado', 404);
   }
 
-  if (student.photoKey) {
-    try { await deleteImage(student.photoKey); } catch (e) { console.error('[Delete] Error al eliminar imagen:', e); }
-  }
-
-  if (student.faceEmbeddingId) {
-    try { await deleteFace(student.faceEmbeddingId); } catch (e) { console.error('[Delete] Error al eliminar rostro:', e); }
-  }
-
-  await Student.deleteOne({ id });
+  // Fase 3: eliminación completa (MongoDB + S3 + Rekognition + evidencias +
+  // accesos + incidentes + asistencia + inscripciones + historial de consentimiento).
+  const { deleteStudentData } = await import('./consent.ts');
+  await deleteStudentData(student);
 
   await recordAudit({
     ...auditContext(actor, req),
@@ -798,6 +731,73 @@ export async function handleDeleteStudent(req: Request): Promise<Response> {
   });
 
   return jsonResponse({ ok: true, message: 'Estudiante eliminado' });
+}
+
+/**
+ * Revoca los datos biométricos del estudiante (Fase 3): borra la foto (S3) y
+ * el embedding (Rekognition), deja la ficha académica intacta y registra el
+ * evento de consentimiento. Solo admin o el docente propietario.
+ */
+export async function handleRevokeBiometric(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  const actor = await tryAuthenticate(req);
+  if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'student')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
+
+  await connectDB();
+  const { id } = await req.json() as { id?: string };
+  if (!id) return errorResponse('ID del estudiante requerido', 400);
+
+  if (actor.role === 'docente') {
+    const owns = await teacherOwnsStudent(actor.userId, id);
+    if (!owns) return errorResponse('No puedes revocar la biometría de estudiantes que no son de tus clases', 403);
+  }
+
+  const student = await Student.findOne({ id });
+  if (!student) return errorResponse('Estudiante no encontrado', 404);
+
+  const { revokeBiometric } = await import('./consent.ts');
+  await revokeBiometric(student, actor);
+
+  await recordAudit({
+    ...auditContext(actor, req),
+    action: 'student.biometric_revoke',
+    targetType: 'student',
+    targetId: id,
+    details: `Revocados datos biométricos de ${student.name} (foto S3 + embedding Rekognition)`,
+  });
+
+  const updated = await Student.findOne({ id });
+  return jsonResponse({ ok: true, student: updated });
+}
+
+/** Historial de consentimiento biométrico del estudiante. */
+export async function handleGetConsentLogs(req: Request): Promise<Response> {
+  const { jsonResponse, errorResponse } = await import('./auth.ts');
+  const actor = await tryAuthenticate(req);
+  if (!actor) return errorResponse('No autorizado', 401);
+
+  const url = new URL(req.url);
+  const studentId = url.searchParams.get('studentId');
+  if (!studentId) return errorResponse('studentId requerido', 400);
+
+  await connectDB();
+  if (actor.role === 'docente') {
+    const owns = await teacherOwnsStudent(actor.userId, studentId);
+    if (!owns) return errorResponse('No puedes ver el historial de estudiantes ajenos a tus clases', 403);
+  }
+
+  const { getConsentHistory } = await import('./consent.ts');
+  const logs = await getConsentHistory(studentId);
+  return jsonResponse(logs.map(l => ({
+    id: l.id,
+    action: l.action,
+    version: l.version,
+    labCode: l.labCode,
+    grantedBy: l.grantedBy,
+    expiresAt: l.expiresAt,
+    createdAt: l.createdAt,
+  })));
 }
 
 export async function handleGetLogs(req: Request): Promise<Response> {
@@ -1128,6 +1128,7 @@ export async function handleCreateSchedule(req: Request): Promise<Response> {
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
   if (actor.role !== 'admin') return errorResponse('Acceso restringido a administradores', 403);
+  if (await mutationRateLimited(req, 'schedule')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -1180,6 +1181,7 @@ export async function handleUpdateSchedule(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'schedule')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -1264,6 +1266,7 @@ export async function handleDeleteSchedule(req: Request): Promise<Response> {
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
   if (actor.role !== 'admin') return errorResponse('Acceso restringido a administradores', 403);
+  if (await mutationRateLimited(req, 'schedule')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id?: string };
@@ -1314,6 +1317,7 @@ export async function handleCreateEnrollment(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'enrollment')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -1354,6 +1358,7 @@ export async function handleDeleteEnrollment(req: Request): Promise<Response> {
   const { jsonResponse, errorResponse } = await import('./auth.ts');
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
+  if (await mutationRateLimited(req, 'enrollment')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const { id } = await req.json() as { id?: string };
@@ -1528,6 +1533,7 @@ export async function handleUpdateIncident(req: Request): Promise<Response> {
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse("No autorizado", 401);
   if (actor.role !== 'admin') return errorResponse("Acceso restringido a administradores", 403);
+  if (await mutationRateLimited(req, 'incident')) return errorResponse("Demasiadas solicitudes. Espera un minuto.", 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -1622,6 +1628,9 @@ export async function handleGetAttendance(req: Request): Promise<Response> {
 export async function handleGetKioskSession(req: Request): Promise<Response> {
   const { jsonResponse } = await import('./auth.ts');
   await connectDB();
+
+  // Observabilidad: alerta por kiosco sin actividad (throttle interno).
+  void import('./monitoring.ts').then(({ checkKioskInactivity }) => checkKioskInactivity());
 
   const url = new URL(req.url);
   // La ubicación física no se acepta desde el navegador. Se resuelve con la
@@ -1796,6 +1805,7 @@ export async function handleCreateAcademicTerm(req: Request): Promise<Response> 
   const actor = await tryAuthenticate(req);
   if (!actor) return errorResponse('No autorizado', 401);
   if (actor.role !== 'admin') return errorResponse('Acceso restringido a administradores', 403);
+  if (await mutationRateLimited(req, 'term')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as Record<string, unknown>;
@@ -1847,6 +1857,7 @@ export async function handleRegisterBiometric(req: Request): Promise<Response> {
   if (!actor || (actor.role !== 'admin' && actor.role !== 'docente')) {
     return errorResponse('Acceso restringido a administradores y docentes', 403);
   }
+  if (await mutationRateLimited(req, 'biometric')) return errorResponse('Demasiadas solicitudes. Espera un minuto.', 429);
 
   await connectDB();
   const body = await req.json() as {
@@ -1878,7 +1889,8 @@ export async function handleRegisterBiometric(req: Request): Promise<Response> {
   // Si se envía la imagen en base64, subir a S3 e indexar en Rekognition.
   if (imageBase64) {
     s3Key = `students/${studentId}.jpg`;
-    s3Url = await uploadImage(s3Key, imageBase64);
+    await uploadImage(s3Key, imageBase64);
+    s3Url = s3Key;
 
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
@@ -1893,7 +1905,12 @@ export async function handleRegisterBiometric(req: Request): Promise<Response> {
   student.photoKey = s3Key || student.photoKey;
   student.matchPercentage = typeof body.matchPercentage === 'number' ? body.matchPercentage : (student.matchPercentage || 85);
   student.biometricStatus = 'registered';
+  student.biometricUpdatedAt = new Date();
   await student.save();
+
+  // El consentimiento se renueva en cada captura facial (Fase 3).
+  const { refreshConsent } = await import('./consent.ts');
+  await refreshConsent(studentId, actor, student.lab);
 
   await recordAudit({
     ...auditContext(actor, req),

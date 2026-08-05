@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import dns from 'dns';
 import { Schedule } from './models.ts';
+import { Metrics } from './cloudwatch.ts';
+import { logger } from './observability.ts';
 
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
@@ -54,19 +56,20 @@ export async function connectDB(): Promise<typeof mongoose> {
   }
 
   isConnecting = true;
-  console.log('[DB] Connecting to MongoDB...');
+  logger.info('db.connecting');
 
   try {
     await mongoose.connect(getMongoUri(), {
       serverSelectionTimeoutMS: 15000,
       connectTimeoutMS: 15000,
     });
-    console.log('[DB] MongoDB connected');
+    logger.info('db.connected');
     await runMigrations();
     return mongoose;
   } catch (error: unknown) {
+    void Metrics.mongoFailure('connect');
     const msg = error instanceof Error ? error.message : String(error);
-    console.error('[DB] Connection failed:', msg);
+    logger.error('db.connection.failed', { error: msg });
     throw new Error(`MongoDB connection failed: ${msg}`);
   } finally {
     isConnecting = false;
