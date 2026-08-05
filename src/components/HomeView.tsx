@@ -57,12 +57,6 @@ export default function HomeView() {
 
         <div className="max-w-7xl mx-auto w-full px-6 md:px-10 py-16 md:py-20 relative z-10">
           <div className="max-w-3xl mx-auto text-center">
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-50 dark:bg-accent-950/40 border border-accent-200 dark:border-accent-800/50 text-accent-700 dark:text-accent-300 text-caption font-semibold tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" aria-hidden="true" />
-                Control Biométrico Inteligente
-              </span>
-            </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.08 }}
