@@ -1,6 +1,7 @@
 import { connectDB } from '@/lib/db';
 import { User, Student, AccessLog, Alert } from '@/lib/models';
 import { hashPassword } from '@/lib/auth';
+import { requireAdmin } from '@/lib/rbac';
 
 async function seedDatabase() {
   await connectDB();
@@ -18,29 +19,38 @@ async function seedDatabase() {
   return 'Database seeded: 1 admin + 1 docente';
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Solo administradores (o entorno de desarrollo) pueden inicializar la BD.
+    if (process.env.NODE_ENV !== 'development') {
+      requireAdmin(req);
+    }
     const result = await seedDatabase();
     return new Response(JSON.stringify({ ok: true, message: result }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : 'Unknown error' }), {
-      status: 500,
+    const status = err instanceof Error && 'status' in err ? (err as { status: number }).status : 500;
+    return new Response(JSON.stringify({ ok: false, error: status === 401 || status === 403 ? 'No autorizado' : (err instanceof Error ? err.message : 'Unknown error') }), {
+      status,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    if (process.env.NODE_ENV !== 'development') {
+      requireAdmin(req);
+    }
     const result = await seedDatabase();
     return new Response(JSON.stringify({ ok: true, message: result }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : 'Unknown error' }), {
-      status: 500,
+    const status = err instanceof Error && 'status' in err ? (err as { status: number }).status : 500;
+    return new Response(JSON.stringify({ ok: false, error: status === 401 || status === 403 ? 'No autorizado' : (err instanceof Error ? err.message : 'Unknown error') }), {
+      status,
       headers: { 'Content-Type': 'application/json' },
     });
   }

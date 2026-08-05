@@ -2,12 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   X, User, Student as StudentIcon, Flask, Camera as CameraIcon, CheckCircle,
-  ArrowRight, Image as ImageIcon, Scan, Fingerprint, WarningOctagon,
-  IdentificationBadge, Envelope, Phone, ShieldCheck, CircleNotch, CaretDown
+  ArrowRight, Scan, Fingerprint, WarningOctagon, Clock,
+  Envelope, Phone, ShieldCheck, CircleNotch,
+  LockSimple,
 } from '@phosphor-icons/react';
 import type { Student, Career } from '../types.ts';
 import { CAREERS } from '../types.ts';
 import { api, getToken } from '../lib/api.ts';
+import { useApp } from '../context/AppContext.tsx';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
 async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url: string; key: string } | null> {
@@ -33,6 +35,8 @@ async function uploadToS3(imageBase64: string, studentId: string): Promise<{ url
 interface EnrollmentViewProps {
   onComplete: (student: Student) => void;
   onCancel: () => void;
+  /** Clase en la que se matricula: su lab y horario se muestran como fijos. */
+  scheduleId?: string;
 }
 
 const FALLBACK_LABS = [
@@ -41,17 +45,25 @@ const FALLBACK_LABS = [
 
 const DEFAULT_AVATAR = '/images/default-avatar.jpg';
 
+const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
 const inputClass =
   'w-full text-xs p-3 pl-10 rounded-xl border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all';
 
-export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewProps) {
+export default function EnrollmentView({ onComplete, onCancel, scheduleId }: EnrollmentViewProps) {
+  const { user } = useApp();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [documentId, setDocumentId] = useState('');
   const [email, setEmail] = useState('');
-  const [career, setCareer] = useState<Career | ''>('');
+  const [career, setCareer] = useState<Career>(CAREERS[0].value);
   const [phone, setPhone] = useState('');
-  const [selectedLabs, setSelectedLabs] = useState<string[]>([]);
+
+  // Lab/aula asignado: es fijo (retroalimentación), no seleccionable.
+  const [assignedLab, setAssignedLab] = useState<string>(user?.labCode || '');
+  const [scheduleInfo, setScheduleInfo] = useState<{ id: string; subject: string; labCode: string; dayOfWeek: number; startTime: string; endTime: string } | null>(null);
+  /** Clases del docente autenticado (filtradas por rol en el servidor). */
+  const [teacherSchedules, setTeacherSchedules] = useState<{ id: string; subject: string; labCode: string; dayOfWeek: number; startTime: string; endTime: string }[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>(scheduleId || '');
 
   const [useWebcam, setUseWebcam] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -66,7 +78,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [capturedBlobUrl, setCapturedBlobUrl] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; documentId?: string; phone?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; phone?: string }>({});
   const [availableLabs, setAvailableLabs] = useState(FALLBACK_LABS);
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -86,7 +98,25 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
         }
       })
       .catch(() => {});
-  }, []);
+
+    // Si se matricula dentro de una clase concreta, el lab y el horario se
+    // muestran como fijos (se heredan de la clase; no se pueden cambiar).
+    api.getSchedules()
+      .then(list => {
+        const mine = list.map(s => ({ id: s.id, subject: s.subject, labCode: s.labCode, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime }));
+        setTeacherSchedules(mine);
+
+        // Preselección: la clase pasada como prop, o la primera del docente.
+        const preset = mine.find(s => s.id === (scheduleId || selectedScheduleId)) || mine[0];
+        if (preset) {
+          setSelectedScheduleId(preset.id);
+          setScheduleInfo(preset);
+          setAssignedLab(preset.labCode);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleId]);
 
   useEffect(() => {
     return () => {
@@ -184,20 +214,12 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     setTimeout(() => setCaptureSuccess(false), 1500);
   };
 
-  const toggleLab = (lab: string) => {
-    setSelectedLabs(prev =>
-      prev.includes(lab) ? prev.filter(l => l !== lab) : [...prev, lab],
-    );
-  };
-
   const clearForm = () => {
     setFirstName('');
     setLastName('');
-    setDocumentId('');
     setEmail('');
-    setCareer('');
+    setCareer(CAREERS[0].value);
     setPhone('');
-    setSelectedLabs([]);
     setCapturedImage(null);
     setCapturedBlobUrl(null);
     setCaptureSuccess(false);
@@ -206,13 +228,19 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
     stopWebcam();
   };
 
+  /** Al cambiar la clase, se fijan el lab y el horario como retroalimentación. */
+  const selectSchedule = (id: string) => {
+    const s = teacherSchedules.find(x => x.id === id);
+    if (!s) return;
+    setSelectedScheduleId(id);
+    setScheduleInfo(s);
+    setAssignedLab(s.labCode);
+  };
+
   const validateFields = () => {
-    const errors: { email?: string; documentId?: string; phone?: string } = {};
+    const errors: { email?: string; phone?: string } = {};
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
       errors.email = 'Ingresa un correo válido (ej. alumno@uide.edu.ec)';
-    }
-    if (documentId.trim() && !/^\d{6,10}$/.test(documentId.trim())) {
-      errors.documentId = 'La cédula debe contener entre 6 y 10 dígitos';
     }
     if (phone.trim() && !/^\d{7,10}$/.test(phone.trim())) {
       errors.phone = 'El teléfono debe contener entre 7 y 10 dígitos';
@@ -270,18 +298,18 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
       id: studentId,
       name: fullName,
       lastName: lastName.trim() || undefined,
-      documentId: documentId.trim() || undefined,
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       career,
-      lab: selectedLabs[0] || 'LAB-02',
-      labs: selectedLabs,
+      lab: assignedLab,
+      labs: assignedLab ? [assignedLab] : undefined,
       photoUrl: s3Url || DEFAULT_AVATAR,
       photoKey: s3Key || undefined,
       faceEmbeddingId: faceId || undefined,
       matchPercentage: 85,
       status: 'allowed',
       avatarInitials: initials,
+      ...(selectedScheduleId ? { scheduleId: selectedScheduleId } : {}),
     };
 
     setRegistering(false);
@@ -291,7 +319,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
 
   const hasEnteredData =
     firstName.trim().length > 0 || lastName.trim().length > 0 || career.trim().length > 0 ||
-    capturedImage !== null || selectedLabs.length > 0;
+    capturedImage !== null;
 
   const handleCancel = () => {
     setRegistrationError('');
@@ -300,7 +328,7 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
   };
 
   const infoValid = firstName.trim().length > 0 && career.trim().length > 0;
-  const canSubmit = infoValid && selectedLabs.length > 0 && capturedImage !== null && !registering;
+  const canSubmit = infoValid && capturedImage !== null && !registering;
 
   // Stepper del registro biométrico
   const bioSteps = [
@@ -366,19 +394,6 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                 </div>
               </div>
               <div>
-                <label htmlFor="en-doc" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">ID / Cédula</label>
-                <div className="relative">
-                  <IdentificationBadge className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                  <input id="en-doc" type="text" placeholder="Ej. 1723456789"
-                    value={documentId} onChange={e => setDocumentId(e.target.value)}
-                    aria-invalid={!!fieldErrors.documentId}
-                    className={`${inputClass} ${fieldErrors.documentId ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
-                </div>
-                {fieldErrors.documentId && (
-                  <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.documentId}</p>
-                )}
-              </div>
-              <div>
                 <label htmlFor="en-email" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Correo</label>
                 <div className="relative">
                   <Envelope className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
@@ -395,19 +410,8 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
                 <label htmlFor="en-career" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Carrera</label>
                 <div className="relative">
                   <StudentIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                  <select
-                    id="en-career"
-                    required
-                    value={career}
-                    onChange={e => setCareer(e.target.value as Career)}
-                    className={`${inputClass} appearance-none pr-10 cursor-pointer`}
-                  >
-                    <option value="" disabled>Selecciona una carrera</option>
-                    {CAREERS.map(c => (
-                      <option key={c.value} value={c.value}>{c.value}</option>
-                    ))}
-                  </select>
-                  <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="bold" />
+                  <input id="en-career" type="text" readOnly value={career}
+                    className={`${inputClass} bg-zinc-100 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 cursor-not-allowed`} />
                 </div>
               </div>
               <div className="sm:col-span-2">
@@ -426,51 +430,78 @@ export default function EnrollmentView({ onComplete, onCancel }: EnrollmentViewP
             </div>
           </section>
 
-          {/* Card: Permisos */}
+          {/* Card: Acceso asignado (clase, lab y horario — fijos) */}
           <section className="bg-zinc-50/60 dark:bg-zinc-800/40 rounded-2xl p-5 md:p-6 space-y-4">
             <h4 className="font-bold text-sm text-zinc-900 dark:text-white flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-accent-500 dark:text-accent-400" weight="fill" />
-              Permisos de laboratorio
+              Clase y horario asignado
             </h4>
             <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              Selecciona los laboratorios a los que tendrá acceso el alumno.
+              El estudiante heredará el laboratorio y el horario de la clase. Son fijos, no seleccionables.
             </p>
-            <div className="space-y-3">
-              {availableLabs.map(lab => {
-                const active = selectedLabs.includes(lab.value);
-                return (
-                  <button
-                    key={lab.value}
-                    onClick={() => toggleLab(lab.value)}
-                    className={`w-full flex items-center gap-3 p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer group ${
-                      active
-                        ? 'bg-accent-50 dark:bg-accent-950/30 border-accent-300 dark:border-accent-700'
-                        : 'bg-white dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 hover:border-accent-300 dark:hover:border-accent-700'
-                    }`}
-                    role="switch"
-                    aria-checked={active}
-                  >
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      active ? 'bg-accent-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-400'
-                    }`}>
-                      <Flask className="w-4 h-4" weight={active ? 'fill' : 'regular'} />
+
+            {/* Selector de clase del docente (solo confirmación; lab y horario se heredan) */}
+            {teacherSchedules.length > 1 && (
+              <div>
+                <label htmlFor="en-schedule" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Clase</label>
+                <div className="relative">
+                  <StudentIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                  <select id="en-schedule" value={selectedScheduleId} onChange={e => selectSchedule(e.target.value)}
+                    className={`${inputClass} appearance-none pr-10 cursor-pointer`}>
+                    {teacherSchedules.map(s => (
+                      <option key={s.id} value={s.id}>{s.subject} · {DAYS[s.dayOfWeek]} {s.startTime}–{s.endTime}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {assignedLab ? (
+              <div className="rounded-2xl border border-accent-300 dark:border-accent-700 bg-accent-50 dark:bg-accent-950/30 p-4 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent-600 text-white flex items-center justify-center shrink-0">
+                    <Flask className="w-5 h-5" weight="fill" />
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <p className="text-sm font-bold text-accent-800 dark:text-accent-300">
+                      {availableLabs.find(l => l.value === assignedLab)?.label || assignedLab}
+                    </p>
+                    <p className="text-xs text-accent-700 dark:text-accent-400">
+                      Laboratorio asignado de la clase
+                    </p>
+                  </div>
+                  <span className="flex items-center gap-1 text-caption font-bold text-accent-700 dark:text-accent-400 shrink-0">
+                    <LockSimple className="w-3.5 h-3.5" weight="fill" />
+                    Fijo
+                  </span>
+                </div>
+
+                {scheduleInfo && (
+                  <div className="pt-2.5 border-t border-accent-200 dark:border-accent-800/40 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-zinc-800 text-accent-600 dark:text-accent-400 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5" weight="fill" />
                     </div>
-                    <div className="flex-grow min-w-0">
-                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">{lab.label}</p>
-                      <p className="text-xs text-zinc-400 dark:text-zinc-500">{lab.desc}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-accent-800 dark:text-accent-300 truncate">{scheduleInfo.subject}</p>
+                      <p className="text-xs text-accent-700 dark:text-accent-400">
+                        {DAYS[scheduleInfo.dayOfWeek]} · {scheduleInfo.startTime}–{scheduleInfo.endTime}
+                      </p>
                     </div>
-                    {/* Switch */}
-                    <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 shrink-0 ${
-                      active ? 'bg-accent-600' : 'bg-zinc-300 dark:bg-zinc-600'
-                    }`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
-                        active ? 'translate-x-6' : 'translate-x-1'
-                      }`} />
+                    <span className="flex items-center gap-1 text-caption font-bold text-accent-700 dark:text-accent-400 shrink-0">
+                      <LockSimple className="w-3.5 h-3.5" weight="fill" />
+                      Fijo
                     </span>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 p-4 flex items-center gap-3">
+                <WarningOctagon className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" weight="fill" />
+                <p className="text-xs text-amber-800 dark:text-amber-400 font-medium">
+                  No hay una clase asignada. El docente debe tener clases vinculadas o indicar la clase.
+                </p>
+              </div>
+            )}
           </section>
         </div>
 

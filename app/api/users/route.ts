@@ -3,6 +3,7 @@ import {
   handleCreateUser,
   handleUpdateUser,
   handleDeleteUser,
+  handleUpdateUserStatus,
 } from '@/lib/handlers';
 
 export async function OPTIONS() {
@@ -10,7 +11,7 @@ export async function OPTIONS() {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
@@ -26,6 +27,10 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   return handleUpdateUser(req);
+}
+
+export async function PATCH(req: Request) {
+  return handleUpdateUserStatus(req);
 }
 
 export async function DELETE(req: Request) {

@@ -1,23 +1,32 @@
 import { connectDB } from '@/lib/db';
-import { AccessLog } from '@/lib/models';
-import { getAuthPayload } from '@/lib/auth';
+import { AccessLog, Schedule } from '@/lib/models';
+import { requireTeacher } from '@/lib/rbac';
 
+/**
+ * GET /api/reports/summary
+ * Reporte de accesos. Un docente solo ve los accesos de sus clases;
+ * el administrador ve el global.
+ */
 export async function GET(req: Request) {
-  const auth = getAuthPayload(req);
-  if (!auth) {
-    return new Response(JSON.stringify({ error: 'No autorizado' }), {
-      status: 401, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  if (auth.role !== 'admin' && auth.role !== 'docente') {
-    return new Response(JSON.stringify({ error: 'Acceso restringido' }), {
-      status: 403, headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   try {
+    const actor = requireTeacher(req);
+
     await connectDB();
-    const logs = await AccessLog.find().sort({ createdAt: -1 }).limit(2000);
+    const filter: Record<string, unknown> = {};
+
+    if (actor.role === 'docente') {
+      // Un docente solo ve los accesos de sus clases (nunca confiar en el frontend).
+      const schedules = await Schedule.find({ teacherId: actor.userId }).select('id');
+      const scheduleIds = schedules.map(s => s.id);
+      if (scheduleIds.length === 0) {
+        return new Response(JSON.stringify({ total: 0, permitidos: 0, denegados: 0, rate: '0', avgSimilarity: '0', topStudents: [], topLabs: [] }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      filter.scheduleId = { $in: scheduleIds };
+    }
+
+    const logs = await AccessLog.find(filter).sort({ createdAt: -1 }).limit(2000);
 
     const total = logs.length;
     const permitidos = logs.filter(l => l.result === 'Permitido').length;
@@ -41,6 +50,7 @@ export async function GET(req: Request) {
       '  REPORTE DE ACCESOS - FACEACCESS LAB',
       '=============================================',
       `  Generado: ${new Date().toLocaleString('es-EC')}`,
+      `  Alcance: ${actor.role === 'docente' ? 'Solo mis clases' : 'Global'}`,
       '',
       'RESUMEN',
       '---------------------------------------------',
@@ -71,8 +81,10 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : 'Error' }), {
-      status: 500, headers: { 'Content-Type': 'application/json' },
+    const status = e instanceof Error && 'status' in e ? (e as { status: number }).status : 500;
+    const message = status === 401 ? 'No autorizado' : status === 403 ? 'Acceso restringido' : (e instanceof Error ? e.message : 'Error');
+    return new Response(JSON.stringify({ error: message }), {
+      status, headers: { 'Content-Type': 'application/json' },
     });
   }
 }

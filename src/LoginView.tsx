@@ -41,6 +41,7 @@ export default function LoginView() {
         name: result.user.name,
         role: result.user.role as 'admin' | 'docente' | 'estudiante',
         studentId: result.user.studentId,
+        labCode: result.user.labCode,
       });
       router.push('/docente');
     } catch (err) {

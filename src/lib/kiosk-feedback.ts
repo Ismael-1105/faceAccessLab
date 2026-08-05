@@ -157,7 +157,14 @@ export type DenialReason =
   | 'permissions'
   | 'liveness-failed'
   | 'capture-failed'
-  | 'network-error';
+  | 'network-error'
+  | 'out-of-schedule'
+  | 'class-not-started'
+  | 'class-ended'
+  | 'class-cancelled'
+  | 'wrong-lab'
+  | 'virtual'
+  | 'no-biometric';
 
 export interface DenialInfo {
   /** Codigo institucional que aparece en pantalla y en la bitacora. */
@@ -221,6 +228,55 @@ export const DENIAL_REASONS: Record<DenialReason, DenialInfo> = {
     detail: 'No hubo respuesta del servicio de reconocimiento en la nube.',
     action: 'Espera unos segundos y repite. Si persiste, avisa al Departamento de Sistemas.',
     retryable: true,
+  },
+  'out-of-schedule': {
+    code: 'R08',
+    title: 'Sin clase en este horario',
+    detail: 'Tu identidad fue verificada, pero no tienes una clase vigente en este laboratorio y en este horario.',
+    action: 'Consulta tu horario de clases. Si crees que es un error, acude a Coordinación Académica.',
+    retryable: false,
+  },
+  'class-not-started': {
+    code: 'R09',
+    title: 'Clase aún no inicia',
+    detail: 'Tu clase está programada en este laboratorio, pero el docente aún no la ha iniciado.',
+    action: 'Espera a que el docente dé inicio a la sesión antes de registrar tu asistencia.',
+    retryable: false,
+  },
+  'class-ended': {
+    code: 'R10',
+    title: 'Clase finalizada',
+    detail: 'Tu clase ya fue finalizada por el docente; ya no se registran ingresos.',
+    action: 'Si necesitas entrar, acude al docente responsable del laboratorio.',
+    retryable: false,
+  },
+  'class-cancelled': {
+    code: 'R11',
+    title: 'Clase cancelada',
+    detail: 'La sesión de hoy fue cancelada y no se registrará asistencia.',
+    action: 'Consulta el aviso del docente para reprogramar tu ingreso al laboratorio.',
+    retryable: false,
+  },
+  'wrong-lab': {
+    code: 'R12',
+    title: 'Laboratorio incorrecto',
+    detail: 'Tu clase de hoy se imparte en otro laboratorio, no en este kiosco.',
+    action: 'Dirígete al laboratorio asignado en tu horario de clases.',
+    retryable: false,
+  },
+  virtual: {
+    code: 'R13',
+    title: 'Materia virtual',
+    detail: 'Esta materia es virtual y no requiere control de acceso físico.',
+    action: 'No necesitas pasar por el kiosco para esta asignatura.',
+    retryable: false,
+  },
+  'no-biometric': {
+    code: 'R14',
+    title: 'Biometría pendiente',
+    detail: 'Tu identidad fue verificada, pero aún no tienes tu registro biométrico completo.',
+    action: 'Acude a tu docente para registrar tu biometría en el panel.',
+    retryable: false,
   },
 };
 

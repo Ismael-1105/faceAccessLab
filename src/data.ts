@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,7 +9,7 @@ export const INITIAL_STUDENTS: Student[] = [
   {
     id: 'student-ismael',
     name: 'Ismael González',
-    career: 'Ingeniería TI',
+    career: 'Ingeniería en Tecnologías de la Información (TIC)',
     lab: 'LAB-02',
     photoUrl: '/images/students/ismael-gonzalez.jpg',
     matchPercentage: 99.8,
@@ -19,7 +19,7 @@ export const INITIAL_STUDENTS: Student[] = [
   {
     id: 'student-alejandro',
     name: 'Alejandro Morales',
-    career: 'Ingeniería de Sistemas',
+    career: 'Ingeniería en Tecnologías de la Información (TIC)',
     lab: 'LAB-02',
     photoUrl: '/images/students/alejandro-morales.jpg',
     matchPercentage: 98.4,
@@ -29,7 +29,7 @@ export const INITIAL_STUDENTS: Student[] = [
   {
     id: 'student-sofia',
     name: 'Sofia Villarreal',
-    career: 'Ciencias de la Computación',
+    career: 'Ingeniería en Tecnologías de la Información (TIC)',
     lab: 'LAB-01',
     photoUrl: '/images/students/sofia-villarreal.jpg',
     matchPercentage: 94.1,
@@ -39,7 +39,7 @@ export const INITIAL_STUDENTS: Student[] = [
   {
     id: 'student-julian',
     name: 'Julian Rivas',
-    career: 'Ingeniería en Telecomunicaciones',
+    career: 'Ingeniería en Tecnologías de la Información (TIC)',
     lab: 'LAB-02',
     photoUrl: '/images/students/julian-rivas.jpg',
     matchPercentage: 91.5,
@@ -49,7 +49,7 @@ export const INITIAL_STUDENTS: Student[] = [
   {
     id: 'student-unknown',
     name: 'Persona Desconocida',
-    career: 'No Registrado / Alerta',
+    career: 'Ingeniería en Tecnologías de la Información (TIC)',
     lab: 'Acceso Denegado',
     photoUrl: '/images/students/persona-desconocida.jpg',
     matchPercentage: 22.8,

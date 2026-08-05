@@ -62,6 +62,7 @@ export default function KioscoPage() {
             statusHint={kiosk.statusHint}
             scanBlocked={kiosk.scanBlocked}
             livenessSessionId={kiosk.livenessSessionId}
+            kioskAttemptId={kiosk.kioskAttemptId}
             cameras={kiosk.cameras}
             selectedCamera={kiosk.selectedCamera}
             showSettings={kiosk.showSettings}
@@ -96,6 +97,7 @@ export default function KioscoPage() {
             confidence={kiosk.confidence}
             resetCountdown={kiosk.resetCountdown}
             consecutiveDenials={kiosk.consecutiveDenials}
+            sessionInfo={kiosk.sessionInfo}
             onPrintReceipt={kiosk.handlePrintReceipt}
           />
         </div>

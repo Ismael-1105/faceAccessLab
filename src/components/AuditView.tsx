@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Scroll, CircleNotch, MagnifyingGlass, ShieldCheck, UserPlus, Trash,
-  Flask, PencilSimple, Database, ShieldWarning,
+  Flask, PencilSimple, Database, ShieldWarning, CaretLeft, CaretRight,
 } from '@phosphor-icons/react';
 import type { AuditLogEntry } from '../types.ts';
 import { api } from '../lib/api.ts';
@@ -19,33 +19,54 @@ const ACTION_META: Record<string, { label: string; icon: React.ElementType; colo
   'student.toggle': { label: 'Cambió estado de alumno', icon: ShieldWarning, color: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400' },
 };
 
+/** Página de registros consultada en el servidor (no se descarga todo). */
+const PAGE_SIZE = 10;
+
 export default function AuditView() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadLogs = async () => {
+  // Ignora respuestas obsoletas cuando el usuario cambia de página o de búsqueda.
+  const requestId = useRef(0);
+
+  const loadLogs = useCallback(async (pageNum: number, query: string) => {
+    const id = ++requestId.current;
     setLoading(true);
+    setError('');
     try {
-      const data = await api.getAuditLogs();
-      setLogs(data);
+      const data = await api.getAuditLogs(pageNum, PAGE_SIZE, query);
+      if (id !== requestId.current) return;
+      setLogs(data.logs);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
+      setPage(data.page);
     } catch (e) {
+      if (id !== requestId.current) return;
       setError(e instanceof Error ? e.message : 'Error al cargar auditoría');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadLogs();
   }, []);
 
-  const filtered = logs.filter(l =>
-    l.actorEmail.toLowerCase().includes(search.toLowerCase()) ||
-    l.action.toLowerCase().includes(search.toLowerCase()) ||
-    (l.details || '').toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    loadLogs(1, '');
+  }, [loadLogs]);
+
+  // El buscador consulta al servidor con debounce y vuelve a la página 1.
+  useEffect(() => {
+    const id = setTimeout(() => loadLogs(1, search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search, loadLogs]);
+
+  const goToPage = (target: number) => {
+    if (target < 1 || target > totalPages || target === page) return;
+    loadLogs(target, search.trim());
+  };
 
   const formatDate = (ts: string) => {
     const d = new Date(ts);
@@ -86,40 +107,60 @@ export default function AuditView() {
             <CircleNotch className="w-6 h-6 animate-spin" weight="bold" />
             <p className="text-sm">Cargando auditoría...</p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : logs.length === 0 ? (
           <div className="py-14 text-center text-zinc-400 dark:text-zinc-500">
             <Scroll className="w-10 h-10 mx-auto mb-3 text-zinc-300 dark:text-zinc-600" weight="regular" />
             <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-              {logs.length === 0 ? 'Aún no hay acciones registradas' : 'Sin resultados para la búsqueda'}
+              {total === 0 ? 'Aún no hay acciones registradas' : 'Sin resultados para la búsqueda'}
             </p>
             <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1">
-              {logs.length === 0 ? 'Las acciones de creación, edición y eliminación quedarán registradas aquí.' : 'Prueba con otro término.'}
+              {total === 0 ? 'Las acciones de creación, edición y eliminación quedarán registradas aquí.' : 'Prueba con otro término.'}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {filtered.map(log => {
-              const meta = ACTION_META[log.action] || { label: log.action, icon: ShieldCheck, color: 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400' };
-              const Icon = meta.icon;
-              return (
-                <div key={String(log.id)} className="px-5 py-3.5 flex items-start gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.color}`}>
-                    <Icon className="w-4 h-4" weight="fill" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-zinc-900 dark:text-white text-sm">{meta.label}</span>
-                      <span className="font-mono text-label text-zinc-400 dark:text-zinc-500">{log.actorEmail}</span>
+          <>
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {logs.map(log => {
+                const meta = ACTION_META[log.action] || { label: log.action, icon: ShieldCheck, color: 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400' };
+                const Icon = meta.icon;
+                return (
+                  <div key={String(log.id)} className="px-5 py-3.5 flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.color}`}>
+                      <Icon className="w-4 h-4" weight="fill" />
                     </div>
-                    {log.details && (
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 break-words">{log.details}</p>
-                    )}
-                    <p className="text-caption font-mono text-zinc-400 dark:text-zinc-500 mt-1">{formatDate(log.createdAt)}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-zinc-900 dark:text-white text-sm">{meta.label}</span>
+                        <span className="font-mono text-label text-zinc-400 dark:text-zinc-500">{log.actorEmail}</span>
+                      </div>
+                      {log.details && (
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 break-words">{log.details}</p>
+                      )}
+                      <p className="text-caption font-mono text-zinc-400 dark:text-zinc-500 mt-1">{formatDate(log.createdAt)}</p>
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="px-5 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                <span className="text-label font-mono text-zinc-400 dark:text-zinc-500">
+                  Pág. {page} de {totalPages} · {total} registros
+                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => goToPage(page - 1)} disabled={page <= 1}
+                    className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400" aria-label="Anterior">
+                    <CaretLeft className="w-3.5 h-3.5" weight="bold" />
+                  </button>
+                  <button onClick={() => goToPage(page + 1)} disabled={page >= totalPages}
+                    className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400" aria-label="Siguiente">
+                    <CaretRight className="w-3.5 h-3.5" weight="bold" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -4,9 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   UserPlus, User, MagnifyingGlass, X, PencilSimple, Trash,
-  Envelope, Key, CircleNotch, Users, ShieldCheck, CheckCircle,
+  Envelope, Key, CircleNotch, Users, ShieldCheck, CheckCircle, Flask,
+  Prohibit, Check,
 } from '@phosphor-icons/react';
-import type { AdminUser } from '../types.ts';
+import type { AdminUser, Lab } from '../types.ts';
 import { api } from '../lib/api.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 
@@ -20,6 +21,7 @@ const inputClass =
 
 export default function UsersView() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [labs, setLabs] = useState<Lab[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,6 +34,7 @@ export default function UsersView() {
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
+  const [formLabCode, setFormLabCode] = useState('');
   const [formError, setFormError] = useState('');
 
   const loadUsers = async () => {
@@ -48,12 +51,14 @@ export default function UsersView() {
 
   useEffect(() => {
     loadUsers();
+    api.getLabs().then(setLabs).catch(() => {});
   }, []);
 
   const openCreate = () => {
     setFormName('');
     setFormEmail('');
     setFormPassword('');
+    setFormLabCode('');
     setFormError('');
     setModal({ type: 'create' });
   };
@@ -62,6 +67,7 @@ export default function UsersView() {
     setFormName(user.name);
     setFormEmail(user.email);
     setFormPassword('');
+    setFormLabCode(user.labCode ?? '');
     setFormError('');
     setModal({ type: 'edit', user });
   };
@@ -94,12 +100,14 @@ export default function UsersView() {
           name: formName.trim(),
           email: formEmail.trim(),
           password: formPassword,
+          labCode: formLabCode || undefined,
         });
         setNotice('Docente creado correctamente.');
       } else if (modal.type === 'edit') {
-        const updates: { name?: string; email?: string; password?: string } = {
+        const updates: { name?: string; email?: string; password?: string; labCode?: string } = {
           name: formName.trim(),
           email: formEmail.trim(),
+          labCode: formLabCode || undefined,
         };
         if (formPassword) updates.password = formPassword;
         await api.updateUser(modal.user.id, updates);
@@ -133,6 +141,18 @@ export default function UsersView() {
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const toggleUserStatus = async (user: AdminUser) => {
+    const next = user.status === 'suspended' ? 'active' : 'suspended';
+    try {
+      await api.updateUserStatus(user.id, next);
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: next } : u));
+      setNotice(next === 'suspended' ? `${user.name} suspendido.` : `${user.name} reactivado.`);
+      setTimeout(() => setNotice(''), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cambiar estado');
+    }
+  };
 
   const initials = (name: string) =>
     name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'D';
@@ -213,6 +233,7 @@ export default function UsersView() {
                 <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
                   <th className="p-4">Docente</th>
                   <th className="p-4">Correo</th>
+                  <th className="p-4">Lab / Aula</th>
                   <th className="p-4">Creado</th>
                   <th className="p-4 text-center">Acciones</th>
                 </tr>
@@ -227,14 +248,35 @@ export default function UsersView() {
                         </div>
                         <div>
                           <p className="font-bold text-zinc-900 dark:text-white text-sm">{user.name}</p>
-                          <span className="inline-flex items-center gap-1 text-label font-semibold text-accent-600 dark:text-accent-400">
-                            <ShieldCheck className="w-3 h-3" weight="fill" />
-                            Docente
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 text-label font-semibold text-accent-600 dark:text-accent-400">
+                              <ShieldCheck className="w-3 h-3" weight="fill" />
+                              Docente
+                            </span>
+                            <span className={`inline-flex items-center gap-1 text-label font-bold px-1.5 py-0.5 rounded-md ${
+                              user.status === 'suspended'
+                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                                : user.status === 'inactive'
+                                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                  : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            }`}>
+                              {user.status === 'suspended' ? 'Suspendido' : user.status === 'inactive' ? 'Inactivo' : 'Activo'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="p-4 font-mono text-zinc-500 dark:text-zinc-400">{user.email}</td>
+                    <td className="p-4">
+                      {user.labCode ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 text-label font-bold">
+                          <Flask className="w-3 h-3" weight="fill" />
+                          {user.labCode}
+                        </span>
+                      ) : (
+                        <span className="text-label text-zinc-400 dark:text-zinc-500">Sin asignar</span>
+                      )}
+                    </td>
                     <td className="p-4 font-mono text-zinc-400 dark:text-zinc-500">{formatDate(user.createdAt)}</td>
                     <td className="p-4">
                       <div className="flex items-center justify-center gap-2">
@@ -245,6 +287,20 @@ export default function UsersView() {
                           aria-label={`Editar a ${user.name}`}
                         >
                           <PencilSimple className="w-4 h-4" weight="regular" />
+                        </button>
+                        <button
+                          onClick={() => toggleUserStatus(user)}
+                          className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+                            user.status === 'suspended'
+                              ? 'text-green-500 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30'
+                              : 'text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                          }`}
+                          title={user.status === 'suspended' ? 'Reactivar' : 'Suspender'}
+                          aria-label={user.status === 'suspended' ? `Reactivar a ${user.name}` : `Suspender a ${user.name}`}
+                        >
+                          {user.status === 'suspended'
+                            ? <Check className="w-4 h-4" weight="regular" />
+                            : <Prohibit className="w-4 h-4" weight="regular" />}
                         </button>
                         <button
                           onClick={() => setDeleteTarget(user)}
@@ -331,6 +387,18 @@ export default function UsersView() {
                         value={formPassword} onChange={e => setFormPassword(e.target.value)}
                         className={inputClass} />
                     </div>
+                  </div>
+                  <div>
+                    <label htmlFor="u-lab" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Lab / Aula asignado</label>
+                    <div className="relative">
+                      <Flask className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
+                      <select id="u-lab" value={formLabCode} onChange={e => setFormLabCode(e.target.value)}
+                        className={`${inputClass} appearance-none pr-10 cursor-pointer`}>
+                        <option value="">Sin asignar</option>
+                        {labs.map(l => <option key={l.code} value={l.code}>{l.code} — {l.name}</option>)}
+                      </select>
+                    </div>
+                    <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Los estudiantes que registre heredarán este lab/aula.</p>
                   </div>
                 </div>
 

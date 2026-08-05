@@ -30,6 +30,13 @@ const FAILING_STAGE: Record<DenialReason, ScanStageId> = {
   'not-enrolled': 'compare',
   'network-error': 'compare',
   permissions: 'authorize',
+  'out-of-schedule': 'authorize',
+  'class-not-started': 'authorize',
+  'class-ended': 'authorize',
+  'class-cancelled': 'authorize',
+  'wrong-lab': 'authorize',
+  virtual: 'authorize',
+  'no-biometric': 'authorize',
 };
 
 interface KioskStepperProps {
@@ -43,6 +50,8 @@ interface KioskStepperProps {
   confidence: number;
   resetCountdown: number;
   consecutiveDenials: number;
+  /** Datos de la clase vigente del kiosco (pre-reconocimiento). */
+  sessionInfo?: { subject?: string; teacherName?: string | null; startTime?: string; endTime?: string } | null;
   onPrintReceipt: () => void;
 }
 
@@ -57,6 +66,7 @@ export default function KioskStepper({
   confidence,
   resetCountdown,
   consecutiveDenials,
+  sessionInfo,
   onPrintReceipt,
 }: KioskStepperProps) {
   const denial = denialReason ? DENIAL_REASONS[denialReason] : null;
@@ -73,6 +83,20 @@ export default function KioskStepper({
           <Radio className="w-3.5 h-3.5 text-accent-500 dark:text-accent-400" />
           Proceso de verificación
         </p>
+
+        {/* Sesión vigente: laboratorio, materia, docente y horario */}
+        {sessionInfo && !isResult && (
+          <div className="mb-6 rounded-2xl bg-accent-50 dark:bg-accent-950/30 border border-accent-200 dark:border-accent-800/40 p-4 space-y-2">
+            <p className="text-[11px] font-mono font-bold uppercase tracking-wider text-accent-700 dark:text-accent-300">
+              Sesión en curso
+            </p>
+            <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{sessionInfo.subject ?? '—'}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">Docente: {sessionInfo.teacherName ?? '—'}</p>
+            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
+              {sessionInfo.startTime ?? '--:--'} – {sessionInfo.endTime ?? '--:--'}
+            </p>
+          </div>
+        )}
 
         {/* Stepper vertical */}
         <div className="space-y-0">
@@ -178,6 +202,28 @@ export default function KioskStepper({
               </p>
             </div>
           </div>
+
+          {/* Acceso concedido: materia, docente, hora y asistencia registrada */}
+          {isSuccess && (
+            <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-800/40 grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-green-700 dark:text-green-400">Materia</p>
+                <p className="font-semibold text-green-900 dark:text-green-300 truncate">{sessionInfo?.subject ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-green-700 dark:text-green-400">Docente</p>
+                <p className="font-semibold text-green-900 dark:text-green-300 truncate">{sessionInfo?.teacherName ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-green-700 dark:text-green-400">Hora de ingreso</p>
+                <p className="font-semibold text-green-900 dark:text-green-300 font-mono">{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-green-700 dark:text-green-400">Asistencia</p>
+                <p className="font-semibold text-green-900 dark:text-green-300">Registrada · Presente</p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 pt-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">

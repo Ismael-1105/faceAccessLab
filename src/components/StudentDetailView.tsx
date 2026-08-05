@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, CheckCircle, XCircle, SignIn, Clock, CalendarBlank,
   IdentificationBadge, Flask, User, Fingerprint,
@@ -9,6 +9,7 @@ import {
 import type { Student, AccessLog } from '../types.ts';
 import ConfirmDialog from './ConfirmDialog.tsx';
 import EmptyState from './EmptyState.tsx';
+import BiometricRegisterModal from './BiometricRegisterModal.tsx';
 import { getPhotoSrc } from '../lib/photoUrl.ts';
 
 interface StudentDetailViewProps {
@@ -17,6 +18,7 @@ interface StudentDetailViewProps {
   onToggleStatus: (id: string) => void;
   onBack: () => void;
   onDelete?: (id: string) => void;
+  onStudentUpdated?: (student: Student) => void;
 }
 
 const ITEMS_PER_PAGE = 8;
@@ -148,7 +150,7 @@ function AccessLogRow({ log }: { log: AccessLog }) {
   );
 }
 
-export default function StudentDetailView({ student, logs, onToggleStatus, onBack, onDelete }: StudentDetailViewProps) {
+export default function StudentDetailView({ student, logs, onToggleStatus, onBack, onDelete, onStudentUpdated }: StudentDetailViewProps) {
   const studentLogs = useMemo(() => logs.filter(l => l.studentId === student.id), [logs, student.id]);
   const total = studentLogs.length;
   const permitidos = studentLogs.filter(l => l.result === 'Permitido').length;
@@ -161,6 +163,8 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
   const [page, setPage] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [biometricOpen, setBiometricOpen] = useState(false);
+  const [biometricStatus, setBiometricStatus] = useState<'pending' | 'registered'>(student.biometricStatus || 'pending');
 
   const filteredLogs = useMemo(() => {
     let result = studentLogs;
@@ -248,6 +252,16 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
                   }
                   {student.status === 'allowed' ? 'Habilitado' : 'Suspendido'}
                 </span>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-bold ${
+                    biometricStatus === 'registered'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  <Fingerprint className="w-3.5 h-3.5" weight="fill" />
+                  {biometricStatus === 'registered' ? 'Biometría OK' : 'Biometría pendiente'}
+                </span>
               </div>
             </div>
 
@@ -269,6 +283,20 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
                 }
                 {student.status === 'allowed' ? 'Suspender' : 'Reintegrar'}
               </button>
+              {biometricStatus === 'registered' ? (
+                <span className="px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800/40">
+                  <Fingerprint className="w-4 h-4" weight="fill" />
+                  Biometría registrada
+                </span>
+              ) : (
+                <button
+                  onClick={() => setBiometricOpen(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] inline-flex items-center gap-1.5 cursor-pointer bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/50 border border-amber-200 dark:border-amber-800/40"
+                >
+                  <Fingerprint className="w-4 h-4" weight="fill" />
+                  Registrar biometría
+                </button>
+              )}
               {onDelete && (
                 <button
                   onClick={() => setDeleteConfirmOpen(true)}
@@ -434,6 +462,20 @@ export default function StudentDetailView({ student, logs, onToggleStatus, onBac
         onConfirm={() => { onDelete?.(student.id); setDeleteConfirmOpen(false); }}
         onCancel={() => setDeleteConfirmOpen(false)}
       />
+
+      <AnimatePresence>
+        {biometricOpen && (
+          <BiometricRegisterModal
+            student={student}
+            onClose={() => setBiometricOpen(false)}
+            onRegistered={(updated) => {
+              setBiometricOpen(false);
+              setBiometricStatus('registered');
+              onStudentUpdated?.(updated);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

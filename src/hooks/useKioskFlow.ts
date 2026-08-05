@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Student, AccessLog } from '@/src/types';
+import type { Student } from '@/src/types';
 import { captureFrame } from '@/lib/capture';
 import { useFaceFraming, type FaceFraming } from '@/src/hooks/useFaceFraming';
 import { playCue } from '@/src/lib/kiosk-sound';
@@ -15,7 +15,6 @@ import {
 export type FlowState = 'idle' | 'framing' | 'liveness' | 'scanning' | 'result';
 
 export interface KioskFlow {
-  students: Student[];
   cameraDenied: boolean;
   flowState: FlowState;
   scannedStudent: Student | null;
@@ -24,6 +23,7 @@ export interface KioskFlow {
   statusMessage: string;
   statusHint: string;
   livenessSessionId: string | null;
+  kioskAttemptId: string | null;
   /** Etapa real en curso dentro del escaneo. */
   activeStage: ScanStageId;
   /** Avance del escaneo, de 0 a 1. */
@@ -38,6 +38,8 @@ export interface KioskFlow {
   resetCountdown: number;
   /** Intentos fallidos consecutivos; ≥5 aplica un bloqueo temporal extendido. */
   consecutiveDenials: number;
+  /** Clase vigente del laboratorio del kiosco (se muestra antes del acceso). */
+  sessionInfo: { subject: string; teacherName: string | null; startTime: string; endTime: string; status: string } | null;
   cameras: MediaDeviceInfo[];
   showSettings: boolean;
   selectedCamera: string;
@@ -52,7 +54,7 @@ export interface KioskFlow {
   toggleSettings: () => void;
   resetScan: () => void;
   toggleScanBlocked: () => void;
-  handleLivenessSuccess: (confidence: number) => void;
+  handleLivenessSuccess: () => void;
   handleLivenessFail: (message: string) => void;
   handlePrintReceipt: () => void;
 }
@@ -74,18 +76,19 @@ const IDLE_TEXT = {
 };
 
 export function useKioskFlow(): KioskFlow {
-  const [students, setStudents] = useState<Student[]>([]);
   const [cameraDenied, setCameraDenied] = useState(false);
   const [flowState, setFlowState] = useState<FlowState>('idle');
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null);
   const [confidence, setConfidence] = useState(0);
   const [scanBlocked, setScanBlocked] = useState(false);
   const [livenessSessionId, setLivenessSessionId] = useState<string | null>(null);
+  const [kioskAttemptId, setKioskAttemptId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<ScanStageId>('capture');
   const [scanProgress, setScanProgress] = useState(0);
   const [denialReason, setDenialReason] = useState<DenialReason | null>(null);
   const [resetCountdown, setResetCountdown] = useState(0);
   const [consecutiveDenials, setConsecutiveDenials] = useState(0);
+  const [sessionInfo, setSessionInfo] = useState<KioskFlow['sessionInfo']>(null);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState('');
@@ -97,6 +100,8 @@ export function useKioskFlow(): KioskFlow {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const performScanRef = useRef<(frameArg?: string) => void>(() => {});
+  /** Instante de inicio del escaneo para medir la latencia del reconocimiento. */
+  const scanStartRef = useRef(0);
 
   const setFlow = useCallback((s: FlowState) => {
     flowStateRef.current = s;
@@ -165,27 +170,7 @@ export function useKioskFlow(): KioskFlow {
     setActiveStage(stage);
   }, []);
 
-  const saveAccessLog = useCallback((student: Student | null, conf: number, allowed: boolean) => {
-    const now = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const log: AccessLog = {
-      id: 'log-' + Math.random().toString(36).slice(2, 11),
-      studentId: student?.id ?? 'unknown',
-      studentName: student?.name ?? 'No identificado',
-      avatarInitials: student?.avatarInitials ?? '?',
-      date: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-      result: allowed ? 'Permitido' : 'Denegado',
-      similarity: parseFloat(conf.toFixed(1)),
-    };
-    fetch('/api/kiosk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(log),
-    }).catch(err => console.error('[Kiosk] Error guardando AccessLog:', err));
-  }, []);
-
-  /** Cierra el ciclo con acceso concedido. */
+  /** Renderiza un acceso concedido que ya fue decidido y persistido por el backend. */
   const finishGranted = useCallback((student: Student, conf: number) => {
     scanningRef.current = false;
     setScannedStudent(student);
@@ -194,10 +179,9 @@ export function useKioskFlow(): KioskFlow {
     setScanProgress(1);
     setFlow('result');
     setResetCountdown(Math.round(RESET_MS.granted / 1000));
-    saveAccessLog(student, conf, true);
     playCue('granted');
     console.log(`[Kiosk] ACCESO CONCEDIDO: ${student.name} (${conf.toFixed(1)}%)`);
-  }, [saveAccessLog, setFlow]);
+  }, [setFlow]);
 
   /** Cierra el ciclo con acceso denegado, guardando la causa real. */
   const finishDenied = useCallback((reason: DenialReason, conf: number, student: Student | null = null) => {
@@ -215,10 +199,9 @@ export function useKioskFlow(): KioskFlow {
       setResetCountdown(base + penalty);
       return next;
     });
-    saveAccessLog(student, conf, false);
     playCue('denied');
     console.log(`[Kiosk] ACCESO DENEGADO: ${DENIAL_REASONS[reason].code} ${DENIAL_REASONS[reason].title}`);
-  }, [saveAccessLog, setFlow]);
+  }, [setFlow]);
 
   const startLiveness = useCallback(async () => {
     if (startingRef.current || scanningRef.current) return;
@@ -226,13 +209,12 @@ export function useKioskFlow(): KioskFlow {
     goToStage('liveness');
 
     try {
-      const res = await fetch('/api/rekognition/liveness', {
+      const res = await fetch('/api/kiosk/attempt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init: true }),
       });
       const data = await res.json();
-      if (data.ok && data.sessionId) {
+      if (data.ok && data.sessionId && data.attemptId) {
+        setKioskAttemptId(data.attemptId);
         setLivenessSessionId(data.sessionId);
         setFlow('liveness');
         playCue('ready');
@@ -248,19 +230,20 @@ export function useKioskFlow(): KioskFlow {
     }
   }, [finishDenied, goToStage, setFlow]);
 
-  const handleLivenessSuccess = useCallback((conf: number) => {
+  const handleLivenessSuccess = useCallback(() => {
     setLivenessSessionId(null);
-    console.log('[Kiosk] Liveness superado con confianza:', conf);
+    console.log('[Kiosk] Desafío liveness completado; el backend validará el resultado.');
     performScanRef.current();
   }, []);
 
   const handleLivenessFail = useCallback((message: string) => {
     setLivenessSessionId(null);
     console.warn('[Kiosk] Liveness no superado:', message);
-    // Se cierra el ciclo con una causa visible en lugar de volver a la espera,
-    // que era lo que encadenaba reintentos sin explicación alguna.
-    finishDenied('liveness-failed', 0);
-  }, [finishDenied]);
+    // El navegador no decide la denegación. El backend consulta el resultado
+    // oficial de la sesión AWS, persiste AccessLog/evidencia/incidente y devuelve
+    // la causa autoritativa que debe mostrarse.
+    performScanRef.current();
+  }, []);
 
   const performScan = useCallback(async (frameArg?: string) => {
     if (scanningRef.current) return;
@@ -268,6 +251,7 @@ export function useKioskFlow(): KioskFlow {
     setFlow('scanning');
     goToStage('capture');
     setScanProgress(0);
+    scanStartRef.current = performance.now();
 
     const video = videoRef.current;
     const frame = frameArg || (video ? captureFrame(video) : null);
@@ -279,48 +263,31 @@ export function useKioskFlow(): KioskFlow {
     goToStage('compare');
 
     try {
-      const res = await fetch('/api/rekognition/compare', {
+      if (!kioskAttemptId) {
+        finishDenied('network-error', 0);
+        return;
+      }
+
+      const res = await fetch('/api/kiosk/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: frame }),
+        body: JSON.stringify({ attemptId: kioskAttemptId, imageBase64: frame }),
       });
       const result = await res.json();
-      console.log('[Kiosk] Compare:', result.match ? 'match' : 'no-match', 'confidence=', result.confidence, 'studentId=', result.studentId);
+      console.log('[Kiosk] Resultado autoritativo:', result.allowed ? 'allowed' : 'denied', result.reason);
 
       const finalConfidence = result.confidence || 0;
-
-      if (!result.ok || !result.match || !result.studentId) {
-        finishDenied('no-match', finalConfidence);
-        return;
-      }
-
-      const candidate = students.find(s => s.id === result.studentId);
-      if (!candidate) {
-        // Rekognition reconoció el rostro pero no existe la ficha local.
-        finishDenied('not-enrolled', finalConfidence);
-        return;
-      }
-
-      const threshold = candidate.matchPercentage > 0 ? candidate.matchPercentage : 85;
-      if (finalConfidence < threshold) {
-        // No se revela a quién se parece: serían datos de un tercero.
-        finishDenied('low-confidence', finalConfidence);
-        return;
-      }
-
       goToStage('authorize');
-
-      if (candidate.status !== 'allowed') {
-        finishDenied('permissions', finalConfidence, candidate);
+      if (!result.ok || !result.allowed || !result.student) {
+        finishDenied((result.reason || 'network-error') as DenialReason, finalConfidence, result.student || null);
         return;
       }
-
-      finishGranted(candidate, finalConfidence);
+      finishGranted(result.student as Student, finalConfidence);
     } catch (err) {
       console.error('[Kiosk] Error en compare:', err);
       finishDenied('network-error', 0);
     }
-  }, [students, finishDenied, finishGranted, goToStage, setFlow]);
+  }, [kioskAttemptId, finishDenied, finishGranted, goToStage, setFlow]);
 
   useEffect(() => {
     performScanRef.current = performScan;
@@ -333,6 +300,7 @@ export function useKioskFlow(): KioskFlow {
     setConfidence(0);
     setDenialReason(null);
     setLivenessSessionId(null);
+    setKioskAttemptId(null);
     setScanProgress(0);
     setResetCountdown(0);
     setConsecutiveDenials(0);
@@ -340,16 +308,18 @@ export function useKioskFlow(): KioskFlow {
     setFlow(cameraDenied || scanBlocked ? 'idle' : 'framing');
   }, [cameraDenied, goToStage, scanBlocked, setFlow]);
 
-  // Inicialización: estudiantes, cámaras y webcam
+  // Inicialización: sesión vigente del laboratorio, cámaras y webcam.
   useEffect(() => {
     let cancelled = false;
 
-    fetch('/api/kiosk')
+    // Sesión vigente del laboratorio (Funcionalidad 7): se muestra antes del acceso.
+    // La ubicación del kiosco se resuelve exclusivamente en el servidor.
+    fetch('/api/kiosk/session')
       .then(r => r.json())
-      .then((data: Student[]) => {
-        if (!cancelled) setStudents(data);
+      .then((data: { session: KioskFlow['sessionInfo'] | null }) => {
+        if (!cancelled) setSessionInfo(data.session);
       })
-      .catch(err => console.error('[Kiosk] Error cargando estudiantes:', err));
+      .catch(err => console.error('[Kiosk] Error cargando sesión:', err));
 
     navigator.mediaDevices?.enumerateDevices?.().then(devices => {
       if (!cancelled) setCameras(devices.filter(d => d.kind === 'videoinput'));
@@ -447,7 +417,6 @@ Resultados:
   })();
 
   return {
-    students,
     cameraDenied,
     flowState,
     scannedStudent,
@@ -456,6 +425,7 @@ Resultados:
     statusMessage: guidance.message,
     statusHint: guidance.hint,
     livenessSessionId,
+    kioskAttemptId,
     activeStage,
     scanProgress,
     denialReason,
@@ -463,6 +433,7 @@ Resultados:
     holdProgress,
     resetCountdown,
     consecutiveDenials,
+    sessionInfo,
     cameras,
     showSettings,
     selectedCamera,

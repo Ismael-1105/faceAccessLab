@@ -1,4 +1,3 @@
-import { handleGetStudentsPublic, handleCreateLogPublic } from '@/lib/handlers';
 
 export async function OPTIONS() {
   return new Response(null, {
@@ -12,9 +11,17 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: Request) {
-  return handleGetStudentsPublic(req);
+  void req;
+  return Response.json(
+    { error: 'El kiosco ya no descarga el directorio de estudiantes.' },
+    { status: 410 },
+  );
 }
 
 export async function POST(req: Request) {
-  return handleCreateLogPublic(req);
+  void req;
+  return Response.json(
+    { error: 'La creación de accesos desde el cliente fue retirada. Usa el flujo de verificación del kiosco.' },
+    { status: 410 },
+  );
 }

@@ -1,31 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { FileCsv, FileText, ChartBar, TrendUp, Users, Clock } from '@phosphor-icons/react';
 import type { AccessLog } from '../types.ts';
-import { DAILY_STATS } from '../data.ts';
 import { api } from '../lib/api.ts';
 
 interface ReportsViewProps {
   logs: AccessLog[];
 }
-
-const PEAK_HOURS = [
-  { hour: '07:00 - 08:00', count: 18 },
-  { hour: '08:00 - 09:00', count: 42 },
-  { hour: '09:00 - 10:00', count: 35 },
-  { hour: '10:00 - 11:00', count: 28 },
-  { hour: '11:00 - 12:00', count: 31 },
-  { hour: '12:00 - 13:00', count: 45 },
-  { hour: '13:00 - 14:00', count: 38 },
-  { hour: '14:00 - 15:00', count: 22 },
-];
-
-const TOP_STUDENTS = [
-  { name: 'Alejandro Morales', accesses: 47, avg: 98.2 },
-  { name: 'Sofia Villarreal', accesses: 41, avg: 95.6 },
-  { name: 'Ismael González', accesses: 38, avg: 99.1 },
-  { name: 'Julian Rivas', accesses: 32, avg: 92.8 },
-  { name: 'Valentina López', accesses: 29, avg: 94.3 },
-];
 
 export default function ReportsView({ logs }: ReportsViewProps) {
   const [period, setPeriod] = useState('week');
@@ -92,9 +72,26 @@ export default function ReportsView({ logs }: ReportsViewProps) {
       .sort((a, b) => a.hour.localeCompare(b.hour));
   }, [logs]);
 
-  const topStudents = computedTopStudents.length > 0 ? computedTopStudents : TOP_STUDENTS;
-  const peakHours = computedPeakHours.length > 0 ? computedPeakHours : PEAK_HOURS;
-  const maxDay = DAILY_STATS.chartData.reduce((max, d) => d.count > max.count ? d : max, DAILY_STATS.chartData[0]);
+  const weeklyChart = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('es-EC', { weekday: 'short' });
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const key = date.toISOString().slice(0, 10);
+      return {
+        day: formatter.format(date).replace('.', ''),
+        count: logs.filter(log => log.date === key).length,
+      };
+    });
+  }, [logs]);
+
+  const topStudents = computedTopStudents;
+  const peakHours = computedPeakHours;
+  const maxDay = weeklyChart.reduce(
+    (max, day) => day.count > max.count ? day : max,
+    weeklyChart[0] || { day: '—', count: 0 },
+  );
 
   const handleExportCSV = () => {
     const header = 'Tipo,Valor\n';
@@ -103,10 +100,10 @@ export default function ReportsView({ logs }: ReportsViewProps) {
       `Permitidos,${permitidos}`,
       `Denegados,${denegados}`,
       `Similitud Promedio,${avgSimilarity}%`,
-      `Pico Semanal,${Math.max(...DAILY_STATS.chartData.map(d => d.count))}`,
+      `Pico Semanal,${Math.max(0, ...weeklyChart.map(d => d.count))}`,
       '', '',
       'Alumno,Accesos,Similitud Prom. (%)',
-      ...TOP_STUDENTS.map(s => `"${s.name}",${s.accesses},${s.avg}`),
+      ...topStudents.map(s => `"${s.name}",${s.accesses},${s.avg}`),
     ];
     const blob = new Blob([header + rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -200,8 +197,8 @@ export default function ReportsView({ logs }: ReportsViewProps) {
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Lecturas biométricas procesadas.</p>
           </div>
           <div className="flex justify-between items-end h-48 px-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
-            {DAILY_STATS.chartData.map((bar, i) => {
-              const max = Math.max(...DAILY_STATS.chartData.map(d => d.count));
+            {weeklyChart.map((bar, i) => {
+              const max = Math.max(1, ...weeklyChart.map(d => d.count));
               const pct = (bar.count / max) * 100;
               return (
                 <div key={i} className="flex flex-col items-center flex-1 group">

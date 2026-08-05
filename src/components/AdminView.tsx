@@ -9,7 +9,8 @@ import Link from 'next/link';
 import {
   Users, Heartbeat, ShieldWarning, SignIn, MagnifyingGlass, FileCsv,
   Plus, CheckCircle, XCircle, Trash, SlidersHorizontal, SignOut,
-  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck, Flask, Scroll
+  ChartBar, GearSix, CaretLeft, CaretRight, UserCheck, Flask, Scroll,
+  CalendarBlank, Camera, WarningOctagon, CheckSquare, MonitorArrowUp, Fingerprint
 } from '@phosphor-icons/react';
 import { useApp } from '../context/AppContext.tsx';
 import { api, getToken } from '../lib/api.ts';
@@ -24,17 +25,23 @@ import LabsView from './LabsView.tsx';
 import AuditView from './AuditView.tsx';
 import HealthCard from './HealthCard.tsx';
 import MfaSetup from './MfaSetup.tsx';
+import SchedulesView from './SchedulesView.tsx';
+import AttendanceView from './AttendanceView.tsx';
+import AttendanceReportsView from './AttendanceReportsView.tsx';
+import LabDashboardView from './LabDashboardView.tsx';
+import HistorialView from './HistorialView.tsx';
 
 export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'arquitectura' } = {}) {
   const {
-    students, logs, stats,
+    students, setStudents, logs, setLogs,
+    stats,
     handleToggleStudent, handleAddStudent, handleClearLogs,
     alerts, setAlerts,
     user, handleLogout, connectionStatus,
   } = useApp();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'audit' | 'reports' | 'config'>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'All' | 'Permitido' | 'Denegado'>('All');
   const [logPage, setLogPage] = useState(0);
@@ -44,6 +51,16 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   const [studentSearch, setStudentSearch] = useState('');
   const [clearState, setClearState] = useState<'idle' | 'confirming' | 'done'>('idle');
   const [typedConfirm, setTypedConfirm] = useState('');
+  // F3: filtros avanzados del historial.
+  const [logFilters, setLogFilters] = useState<Record<string, string>>({});
+  // KPIs de la Vista General: se calculan en el backend según el rol del usuario.
+  const [dash, setDash] = useState<import('../types.ts').AcademicDashboard | null>(null);
+
+  useEffect(() => {
+    api.getDashboard()
+      .then(setDash)
+      .catch(() => setDash(null));
+  }, [user?.role]);
 
   const handleAcknowledgeAlert = async (id: string) => {
     const prev = alerts;
@@ -128,21 +145,46 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
     setLogPage(0);
   }, [searchQuery, logFilter]);
 
+  // F3: al cambiar los filtros avanzados se recargan los logs desde el servidor.
+  useEffect(() => {
+    const hasAdvanced = Object.values(logFilters).some(v => v && v !== '');
+    if (!hasAdvanced) return;
+    const params: Record<string, string> = {};
+    Object.entries(logFilters).forEach(([k, v]) => { if (v) params[k] = v; });
+    api.getLogsFiltered(params)
+      .then(list => {
+        const mapped = list.map(l => ({ ...l, id: l.id || String((l as { _id?: string })._id || '') }));
+        setLogs(mapped);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logFilters]);
+
   const filteredStudents = students.filter(s =>
     s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
     s.career.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  type AdminTab = 'overview' | 'students' | 'logs' | 'alerts' | 'users' | 'labs' | 'audit' | 'reports' | 'config';
+  type AdminTab = 'overview' | 'students' | 'historial' | 'alerts' | 'users' | 'labs' | 'audit' | 'schedules' | 'attendance' | 'labdash' | 'acadreports' | 'reports' | 'config';
   const isAdmin = user?.role === 'admin';
+  const isDocente = user?.role === 'docente';
   const PRIMARY_ITEMS: { tab: AdminTab; icon: React.ElementType; label: string }[] = [
     { tab: 'overview', icon: Heartbeat, label: 'Vista General' },
     { tab: 'students', icon: Users, label: `Alumnos (${students.length})` },
-    { tab: 'logs', icon: SlidersHorizontal, label: `Historial (${logs.length})` },
+    { tab: 'historial', icon: SlidersHorizontal, label: 'Historial' },
     { tab: 'alerts', icon: ShieldWarning, label: `Alertas (${alerts.filter(a => a.status === 'active').length})` },
+    ...(isDocente ? [
+      { tab: 'schedules' as const, icon: CalendarBlank, label: 'Mis Clases' },
+      { tab: 'attendance' as const, icon: CheckSquare, label: 'Asistencia' },
+      { tab: 'acadreports' as const, icon: ChartBar, label: 'Reportes' },
+    ] : []),
     ...(isAdmin ? [
       { tab: 'users' as const, icon: UserCheck, label: 'Docentes' },
       { tab: 'labs' as const, icon: Flask, label: 'Laboratorios' },
+      { tab: 'schedules' as const, icon: CalendarBlank, label: 'Planificación' },
+      { tab: 'attendance' as const, icon: CheckSquare, label: 'Asistencia' },
+      { tab: 'labdash' as const, icon: MonitorArrowUp, label: 'Dashboard Lab' },
+      { tab: 'acadreports' as const, icon: ChartBar, label: 'Reportes' },
       { tab: 'audit' as const, icon: Scroll, label: 'Auditoría' },
     ] : []),
   ];
@@ -150,12 +192,13 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
   return (
     <div className="pt-16 min-h-screen bg-surface dark:bg-zinc-950 flex flex-col md:flex-row">
 
-      {/* Sidebar — horizontal en móvil, columna fija en desktop */}
-      <aside className="w-full md:w-60 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:min-h-[calc(100vh-64px)] px-4 py-3 md:px-5 md:py-5">
+      {/* Sidebar — horizontal en móvil, columna fija en desktop.
+          Sticky bajo el header global (top-16 = 64px) para no moverse al hacer scroll. */}
+      <aside className="sticky top-16 z-30 w-full md:w-60 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col md:h-[calc(100vh-64px)] md:self-start px-4 py-3 md:px-5 md:py-5">
         <div className="mb-3 md:mb-4 flex items-center justify-between md:block">
           <div>
-            <p className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">Administrador</p>
-            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">Consola de Control</h3>
+            <p className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 uppercase font-bold">{isAdmin ? 'Administrador' : 'Docente'}</p>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-1">{isAdmin ? 'Consola de Control' : 'Panel Académico'}</h3>
           </div>
           <button
             onClick={() => { handleLogout(); router.push('/'); }}
@@ -226,7 +269,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
             <ShieldWarning className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" weight="fill" />
             <div>
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Sin conexión con el backend</p>
-              <p className="text-caption text-amber-700 dark:text-amber-400 mt-0.5">Mostrando datos de demostración. Verifica MongoDB y los servicios AWS.</p>
+              <p className="text-caption text-amber-700 dark:text-amber-400 mt-0.5">Los datos operativos no están disponibles. Verifica MongoDB y los servicios AWS.</p>
             </div>
           </div>
         )}
@@ -235,44 +278,89 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
         {activeTab === 'overview' && (
           <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-              { label: 'Alumnos', value: stats.registered, icon: Users, accent: 'bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400' },
-              { label: 'Accesos Hoy', value: stats.accessesToday, icon: SignIn, accent: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400' },
-              { label: 'Bloqueos', value: stats.deniedToday, icon: XCircle, accent: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400' },
-              { label: 'Alertas', value: alerts.filter(a => a.status === 'active').length, icon: ShieldWarning, accent: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400', alert: true },
-              ].map(({ label, value, icon: Icon, accent, alert }, i) => (
-                <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
-                  <div>
-                    <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">{label}</span>
-                    <p className={`${i === 0 ? 'text-3xl' : 'text-2xl'} font-black tracking-tight mt-1 ${alert && value > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-900 dark:text-white'}`}>
-                      {value}
-                    </p>
+              {isDocente ? (
+                <>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Mis Clases</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.classes ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400"><CalendarBlank className="w-5 h-5" weight="regular" /></div>
                   </div>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent}`}>
-                    <Icon className="w-5 h-5" weight="regular" />
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Mis Estudiantes</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.students ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400"><Users className="w-5 h-5" weight="regular" /></div>
                   </div>
-                </div>
-              ))}
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Biometrías Pend.</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-amber-600 dark:text-amber-400">{dash?.biometricsPending ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400"><SignIn className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Incidentes Abiertos</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.activeIncidents ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"><WarningOctagon className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Estudiantes</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.students ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400"><Users className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Docentes</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.docentes ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400"><UserCheck className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Biometrías Pend.</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-amber-600 dark:text-amber-400">{dash?.biometricsPending ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400"><Fingerprint className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Incidentes Abiertos</span>
+                      <p className="text-3xl font-black tracking-tight mt-1 text-zinc-900 dark:text-white">{dash?.activeIncidents ?? 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"><WarningOctagon className="w-5 h-5" weight="regular" /></div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
-                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Escaneos hoy</span>
-                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{todayKpis.accessesToday}</p>
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Accesos hoy</span>
+                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{dash?.todayAccesses ?? 0}</p>
               </div>
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
                 <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Permitidos</span>
-                <p className="text-2xl font-black text-green-600 dark:text-green-400 mt-1">{todayKpis.granted}</p>
+                <p className="text-2xl font-black text-green-600 dark:text-green-400 mt-1">{dash?.todayAccesses ?? 0}</p>
               </div>
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
                 <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Denegados</span>
-                <p className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">{todayKpis.denied}</p>
+                <p className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">{dash?.todayDenied ?? 0}</p>
               </div>
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
-                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">% Éxito</span>
-                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{todayKpis.successRate}%</p>
+                <span className="text-label font-mono tracking-wider text-zinc-400 dark:text-zinc-500 block font-bold uppercase">Clases activas</span>
+                <p className="text-2xl font-black text-zinc-900 dark:text-white mt-1">{dash?.classesActive ?? dash?.classes ?? 0}</p>
                 <p className="text-label text-zinc-400 dark:text-zinc-500 mt-0.5">
-                  {todayKpis.topKiosk ? `Kiosco más usado: ${todayKpis.topKiosk}` : 'Sin actividad'}
+                  {isDocente ? 'Mis próximos horarios' : 'En curso ahora'}
                 </p>
               </div>
             </div>
@@ -346,7 +434,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Ultimas Lecturas</h4>
                   <p className="text-xs text-zinc-400 dark:text-zinc-500">Logs en tiempo real.</p>
                 </div>
-                <button onClick={() => setActiveTab('logs')} className="text-xs text-accent-600 dark:text-accent-400 font-semibold hover:underline cursor-pointer">
+                <button onClick={() => setActiveTab('historial')} className="text-xs text-accent-600 dark:text-accent-400 font-semibold hover:underline cursor-pointer">
                   Ver todos
                 </button>
               </div>
@@ -409,6 +497,9 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                         setSelectedStudentId(null);
                       } catch (e) { console.error('[Admin] Error al eliminar estudiante:', e); }
                     }}
+                    onStudentUpdated={(updated) => {
+                      setStudents(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } : s));
+                    }}
                   />
                 );
               })()
@@ -426,6 +517,27 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                 <Plus className="w-4 h-4" weight="bold" />
                 Matricular Alumno
               </button>
+            </div>
+
+            {/* Progreso de biometría registrada */}
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-label font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-bold">
+                  Biometría registrada
+                </p>
+                <p className="text-label font-mono font-bold text-zinc-600 dark:text-zinc-300">
+                  {students.length > 0 ? Math.round((students.filter(s => s.biometricStatus === 'registered').length / students.length) * 100) : 0}% · {students.filter(s => s.biometricStatus === 'registered').length}/{students.length}
+                </p>
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-accent-500 rounded-full transition-[width] duration-300"
+                  style={{ width: `${students.length > 0 ? (students.filter(s => s.biometricStatus === 'registered').length / students.length) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-2">
+                {students.filter(s => s.biometricStatus !== 'registered').length} estudiantes pendientes de registrar su biometría.
+              </p>
             </div>
 
             <div className="relative w-full sm:max-w-xs mt-3">
@@ -447,6 +559,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                       <th className="p-4">Estudiante</th>
                       <th className="p-4">Especialidad</th>
                       <th className="p-4">Lab</th>
+                      <th className="p-4 text-center">Biometría</th>
                       <th className="p-4 text-center">Match</th>
                       <th className="p-4 text-center">Permiso</th>
                     </tr>
@@ -468,6 +581,15 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                         </td>
                         <td className="p-4 text-zinc-600 dark:text-zinc-300 truncate max-w-[180px]" title={student.career}>{student.career}</td>
                         <td className="p-4 font-semibold text-zinc-600 dark:text-zinc-300">{student.lab}</td>
+                        <td className="p-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
+                            student.biometricStatus === 'registered'
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
+                              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400'
+                          }`}>
+                            {student.biometricStatus === 'registered' ? 'Registrada' : 'Pendiente'}
+                          </span>
+                        </td>
                         <td className="p-4 text-center font-mono text-zinc-400 dark:text-zinc-500 font-bold">{student.matchPercentage}%</td>
                         <td className="p-4 text-center">
                           <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
@@ -487,126 +609,10 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
         </div>
         )}
 
-        {/* ========== LOGS ========== */}
-        {activeTab === 'logs' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Historial de Accesos</h3>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Concordancias, marcas temporales e incidencias.</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setActiveTab('reports')}
-                  className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
-                  <ChartBar className="w-4 h-4" weight="regular" />
-                  Reportes
-                </button>
-                <button onClick={handleExportCSV}
-                  className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
-                  <FileCsv className="w-4 h-4" weight="regular" />
-                  Exportar CSV
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-sm text-xs">
-              <div className="relative w-full sm:max-w-xs">
-                <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                <input type="text" placeholder="Buscar estudiante..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-xs transition-all" />
-              </div>
-              <div className="flex items-center gap-4 w-full sm:w-auto">
-                <span className="text-zinc-400 dark:text-zinc-500 font-semibold flex-shrink-0">Filtrar:</span>
-                <select value={logFilter}
-                  onChange={(e) => setLogFilter(e.target.value as typeof logFilter)}
-                  className="text-xs p-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all">
-                  <option value="All">Todos</option>
-                  <option value="Permitido">Solo Permitidos</option>
-                  <option value="Denegado">Solo Denegados</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                {filteredLogs.length > 0 ? (
-                  <table aria-label="Historial de accesos" className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 uppercase text-label font-bold text-left">
-                        <th className="p-4">ID</th>
-                        <th className="p-4">Alumno</th>
-                        <th className="p-4">Fecha</th>
-                        <th className="p-4">Hora</th>
-                        <th className="p-4 text-center">Fidelidad</th>
-                        <th className="p-4 text-center">Cerradura</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedLogs.map((log) => (
-                        <tr key={log.id} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
-                          <td className="p-4 font-mono text-zinc-400 dark:text-zinc-500 font-semibold">{log.id}</td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-7 h-7 rounded-lg bg-accent-600 text-white text-micro font-bold flex items-center justify-center">{log.avatarInitials}</span>
-                              <span className="font-semibold text-zinc-900 dark:text-white truncate max-w-[200px]" title={log.studentName}>{log.studentName}</span>
-                            </div>
-                          </td>
-                          <td className="p-4 text-zinc-500 dark:text-zinc-400">{log.date}</td>
-                          <td className="p-4 font-mono text-zinc-600 dark:text-zinc-300">{log.time}</td>
-                          <td className="p-4 text-center">
-                            <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-lg text-label font-bold text-zinc-500 dark:text-zinc-400">
-                              {log.similarity}%
-                            </span>
-                          </td>
-                          <td className="p-4 text-center">
-                            <span className={`px-2.5 py-1 rounded-lg text-label font-bold ${
-                              log.result === 'Permitido' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
-                            }`}>
-                              {log.result === 'Permitido' ? 'Desbloqueada' : 'Bloqueada'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="py-14 text-center text-zinc-400 dark:text-zinc-500">No se encontraron accesos con los filtros provistos.</div>
-                )}
-              </div>
-              {filteredLogs.length > 0 && (
-                <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                  <span className="text-label font-mono text-zinc-400 dark:text-zinc-500">
-                    Mostrando {logPage * LOGS_PER_PAGE + 1}–{Math.min((logPage + 1) * LOGS_PER_PAGE, filteredLogs.length)} de {filteredLogs.length} registros
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setLogPage(p => Math.max(0, p - 1))}
-                      disabled={logPage === 0}
-                      className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400"
-                      aria-label="Página anterior"
-                    >
-                      <CaretLeft className="w-3.5 h-3.5" weight="bold" />
-                    </button>
-                    <span className="text-label font-mono text-zinc-500 dark:text-zinc-400">
-                      Pág. {logPage + 1} de {totalLogPages}
-                    </span>
-                    <button
-                      onClick={() => setLogPage(p => Math.min(totalLogPages - 1, p + 1))}
-                      disabled={logPage >= totalLogPages - 1}
-                      className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-500 dark:text-zinc-400"
-                      aria-label="Página siguiente"
-                    >
-                      <CaretRight className="w-3.5 h-3.5" weight="bold" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+        {/* ========== HISTORIAL (accesos + evidencia + incidentes) ========== */}
+        {activeTab === 'historial' && (
+          <HistorialView logs={logs} students={students} />
         )}
-
         {/* ========== ALERTS ========== */}
         {activeTab === 'alerts' && (
           <AlertsCenter
@@ -627,6 +633,22 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
 
         {activeTab === 'audit' && isAdmin && (
           <AuditView />
+        )}
+
+        {activeTab === 'schedules' && (
+          <SchedulesView />
+        )}
+
+        {activeTab === 'attendance' && (
+          <AttendanceView />
+        )}
+
+        {activeTab === 'labdash' && isAdmin && (
+          <LabDashboardView />
+        )}
+
+        {activeTab === 'acadreports' && (
+          <AttendanceReportsView />
         )}
 
         {/* ========== REPORTS ========== */}

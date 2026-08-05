@@ -1,5 +1,9 @@
 import { STSClient, GetSessionTokenCommand } from '@aws-sdk/client-sts';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { RATE_LIMITS } from '@/lib/rate-limit';
+import { checkDistributedRateLimit, getClientAddress } from '@/lib/distributed-rate-limit';
+import { getKioskAttemptToken } from '@/lib/kiosk-attempt-cookie';
+import { getActor } from '@/lib/rbac';
+import { assertKioskAttemptForCredentials } from '@/lib/kiosk-verification';
 
 const DURATION_SECONDS = 3600;
 
@@ -7,13 +11,33 @@ const DURATION_SECONDS = 3600;
  * GET /api/aws/credentials
  * Genera credenciales temporales (STS) para el streaming de Face Liveness.
  * Se usa en el credentialProvider del FaceLivenessDetectorCore (kiosco público).
- * Protegido con rate limit por IP para limitar abuso.
+ *
+ * Seguridad:
+ * - El kiosco debe presentar un intento efímero creado por el backend.
+ * - También se acepta sesión de docente/administrador.
+ * - En producción, la clave maestra STS debe tener IAM de mínimo privilegio
+ *   (solo rekognition:CreateFaceLivenessSession).
  */
 export async function GET(req: Request) {
-  const ip = req.headers.get('x-forwarded-for') || 'unknown';
-  if (!checkRateLimit(`sts:${ip}`, RATE_LIMITS.sts)) {
+  const ip = getClientAddress(req);
+  if (!await checkDistributedRateLimit(`sts:${ip}`, RATE_LIMITS.sts)) {
     return new Response(JSON.stringify({ ok: false, error: 'Demasiadas solicitudes. Espera un minuto.' }), {
       status: 429, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const attemptId = req.headers.get('x-kiosk-attempt') || new URL(req.url).searchParams.get('attemptId');
+  const attemptToken = getKioskAttemptToken(req);
+  const actor = getActor(req);
+
+  const hasValidAttempt = attemptId && attemptToken
+    ? await assertKioskAttemptForCredentials(attemptId, attemptToken)
+    : false;
+  const hasValidSession = actor && (actor.role === 'admin' || actor.role === 'docente');
+
+  if (!hasValidAttempt && !hasValidSession) {
+    return new Response(JSON.stringify({ ok: false, error: 'No autorizado' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' },
     });
   }
 

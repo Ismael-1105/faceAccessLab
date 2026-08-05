@@ -1,8 +1,10 @@
 import { connectDB } from '@/lib/db';
 import { User, Student, AccessLog, Alert } from '@/lib/models';
+import { requireAuth } from '@/lib/rbac';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    requireAuth(req);
     await connectDB();
     const [users, students, logs, alerts] = await Promise.all([
       User.countDocuments(),
@@ -21,8 +23,9 @@ export async function GET() {
       },
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
-    return new Response(JSON.stringify({ connected: false, error: err instanceof Error ? err.message : 'Unknown' }), {
-      headers: { 'Content-Type': 'application/json' },
+    const status = err instanceof Error && 'status' in err ? (err as { status: number }).status : 500;
+    return new Response(JSON.stringify({ connected: false, error: status === 401 ? 'No autorizado' : (err instanceof Error ? err.message : 'Unknown') }), {
+      status, headers: { 'Content-Type': 'application/json' },
     });
   }
 }

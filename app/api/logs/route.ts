@@ -1,4 +1,4 @@
-import { handleGetLogs, handleCreateLog } from '@/lib/handlers';
+import { handleGetLogs } from '@/lib/handlers';
 
 export async function OPTIONS() {
   return new Response(null, {
@@ -16,5 +16,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  return handleCreateLog(req);
+  void req;
+  return Response.json(
+    { error: 'Los accesos solo pueden ser creados por la verificación autoritativa del kiosco.' },
+    { status: 410 },
+  );
 }

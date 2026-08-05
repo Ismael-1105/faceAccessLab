@@ -5,16 +5,19 @@ import { FaceLivenessDetectorCore } from '@aws-amplify/ui-react-liveness';
 import '@aws-amplify/ui-react-liveness/dist/styles.css';
 
 interface FaceLivenessViewProps {
+  attemptId: string;
   sessionId: string;
-  onSuccess: (confidence: number) => void;
+  onSuccess: () => void;
   onFail: (message: string) => void;
 }
 
-export default function FaceLivenessView({ sessionId, onSuccess, onFail }: FaceLivenessViewProps) {
+export default function FaceLivenessView({ attemptId, sessionId, onSuccess, onFail }: FaceLivenessViewProps) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchAwsCredentials = useCallback(async () => {
-    const res = await fetch('/api/aws/credentials');
+    const headers: Record<string, string> = {};
+    headers['x-kiosk-attempt'] = attemptId;
+    const res = await fetch('/api/aws/credentials', { headers });
     const data = await res.json();
 
     if (!data.ok || !data.accessKeyId || !data.secretAccessKey) {
@@ -26,25 +29,18 @@ export default function FaceLivenessView({ sessionId, onSuccess, onFail }: FaceL
       secretAccessKey: data.secretAccessKey,
       sessionToken: data.sessionToken,
     };
-  }, []);
+  }, [attemptId]);
 
   const handleAnalysisComplete = useCallback(async () => {
     try {
-      const res = await fetch(`/api/rekognition/liveness?sessionId=${sessionId}`);
-      const data = await res.json();
-
-      console.log('[Liveness] Resultado:', data.status, data.confidence);
-
-      if (data.ok && data.passed) {
-        onSuccess(data.confidence || 0);
-      } else {
-        onFail(data.message || 'Verificación anti-suplantación no superada');
-      }
+      // El navegador solo informa que el desafío terminó. El backend consultará
+      // y decidirá el resultado oficial de Face Liveness al verificar el intento.
+      onSuccess();
     } catch (err) {
       console.error('[Liveness] Error obteniendo resultado:', err);
       onFail('Error de conexión durante la verificación.');
     }
-  }, [sessionId, onSuccess, onFail]);
+  }, [onSuccess, onFail]);
 
   const handleError = useCallback((livenessError: { state: string; error: Error }) => {
     const message = livenessError?.error?.message || 'Error durante la verificación anti-suplantación';

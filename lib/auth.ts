@@ -1,7 +1,12 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'faceaccess-lab-dev-secret-change-in-production';
+// En producción, JWT_SECRET es obligatorio; en desarrollo se permite un default
+// para no romper el arranque local, pero NUNCA debe usarse en un entorno real.
+const JWT_SECRET = process.env.JWT_SECRET
+  || (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('JWT_SECRET es obligatorio en producción'); })()
+    : 'faceaccess-lab-dev-secret-change-in-production');
 const JWT_EXPIRES_IN = '24h';
 
 export interface TokenPayload {
@@ -9,6 +14,7 @@ export interface TokenPayload {
   email: string;
   role: 'admin' | 'docente' | 'estudiante';
   studentId?: string;
+  labCode?: string;
 }
 
 export async function hashPassword(password: string): Promise<string> {

@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Student, AccessLog, AuthUser, Alert } from '../types.ts';
-import { INITIAL_STUDENTS, DAILY_STATS } from '../data.ts';
 import { api, getToken, setToken } from '../lib/api.ts';
 import ErrorBoundary from '../components/ErrorBoundary.tsx';
 
@@ -69,17 +68,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
+  const [students, setStudents] = useState<Student[]>([]);
   const [logs, setLogs] = useState<AccessLog[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [showPermissionGate, setShowPermissionGate] = useState(false);
 
   const [stats, setStats] = useState({
-    registered: DAILY_STATS.registered,
-    accessesToday: DAILY_STATS.accessesToday,
-    deniedToday: DAILY_STATS.deniedToday,
-    alertsActive: DAILY_STATS.alertsActive
+    registered: 0,
+    accessesToday: 0,
+    deniedToday: 0,
+    alertsActive: 0,
   });
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
@@ -95,6 +94,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: '',
           role: payload.role,
           studentId: payload.studentId,
+          labCode: payload.labCode,
         });
       } catch {
         setToken(null);
@@ -135,6 +135,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleLogin = (authUser: AuthUser) => setUser(authUser);
   const handleLogout = () => {
+    // Auditoría: cierre de sesión (F8). No bloquea el cierre local.
+    try { api.logout().catch(() => {}); } catch { /* noop */ }
     setUser(null);
     setToken(null);
   };
@@ -160,9 +162,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const created = await api.createStudent(newStudent);
       setStudents(prev => [created, ...prev]);
       setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
-    } catch {
-      setStudents(prev => [newStudent, ...prev]);
-      setStats(prev => ({ ...prev, registered: prev.registered + 1 }));
+    } catch (error) {
+      console.error('[Student] No se pudo crear el estudiante:', error);
     }
   };
 

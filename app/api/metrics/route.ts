@@ -1,4 +1,5 @@
 import { CloudWatchClient, GetMetricDataCommand } from '@aws-sdk/client-cloudwatch';
+import { requireTeacher } from '@/lib/rbac';
 
 const NAMESPACE = 'FaceAccessLab';
 const METRICS = [
@@ -30,8 +31,9 @@ function getClient(): CloudWatchClient {
   return cwClient;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    requireTeacher(req);
     const cw = getClient();
     const end = new Date();
     const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
@@ -64,6 +66,12 @@ export async function GET() {
       metrics: totals,
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (error: unknown) {
+    const status = error instanceof Error && 'status' in error ? (error as { status: number }).status : 500;
+    if (status === 401 || status === 403) {
+      return new Response(JSON.stringify({ ok: false, error: status === 401 ? 'No autorizado' : 'Acceso restringido', metrics: {} }), {
+        status, headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const msg = error instanceof Error ? error.message : 'Error desconocido';
     return new Response(JSON.stringify({
       ok: false,

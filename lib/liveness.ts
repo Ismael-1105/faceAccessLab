@@ -50,8 +50,8 @@ export async function createLivenessSession(): Promise<LivenessSession> {
 export interface LivenessResult {
   status: string;
   confidence: number;
-  faceId: string | null;
-  externalImageId: string | null;
+  /** Imagen de referencia elegida por AWS dentro de la sesión verificada. */
+  referenceImageBytes: Uint8Array | null;
 }
 
 export async function getLivenessResult(sessionId: string): Promise<LivenessResult> {
@@ -61,12 +61,9 @@ export async function getLivenessResult(sessionId: string): Promise<LivenessResu
     new GetFaceLivenessSessionResultsCommand({ SessionId: sessionId })
   );
 
-  const face = (result as unknown as { Face?: { FaceId?: string; ExternalImageId?: string } }).Face;
-
   return {
     status: result.Status || 'FAILED',
     confidence: result.Confidence ?? 0,
-    faceId: face?.FaceId || null,
-    externalImageId: face?.ExternalImageId || null,
+    referenceImageBytes: result.ReferenceImage?.Bytes || null,
   };
 }

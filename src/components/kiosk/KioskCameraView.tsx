@@ -32,6 +32,7 @@ interface KioskCameraViewProps {
   statusHint: string;
   scanBlocked: boolean;
   livenessSessionId: string | null;
+  kioskAttemptId: string | null;
   cameras: MediaDeviceInfo[];
   selectedCamera: string;
   showSettings: boolean;
@@ -51,7 +52,7 @@ interface KioskCameraViewProps {
   switchCamera: (deviceId: string) => void;
   toggleScanBlocked: () => void;
   resetScan: () => void;
-  onLivenessSuccess: (confidence: number) => void;
+  onLivenessSuccess: () => void;
   onLivenessFail: (message: string) => void;
 }
 
@@ -62,6 +63,7 @@ export default function KioskCameraView({
   statusHint,
   scanBlocked,
   livenessSessionId,
+  kioskAttemptId,
   cameras,
   selectedCamera,
   showSettings,
@@ -268,9 +270,10 @@ export default function KioskCameraView({
         )}
 
         {/* Overlay Face Liveness */}
-        {flowState === 'liveness' && livenessSessionId && (
+        {flowState === 'liveness' && livenessSessionId && kioskAttemptId && (
           <div className="absolute inset-0 animate-kiosk-fade-in">
             <FaceLivenessView
+              attemptId={kioskAttemptId}
               sessionId={livenessSessionId}
               onSuccess={onLivenessSuccess}
               onFail={onLivenessFail}
