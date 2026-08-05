@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  ChartBar, CircleNotch, FileCsv, FileText, X, TrendDown, WarningOctagon, Timer,
+  ChartBar, CircleNotch, FileCsv, FileText, X, WarningOctagon, Timer,
 } from '@phosphor-icons/react';
 import type { AttendanceReport } from '../types.ts';
 import { api } from '../lib/api.ts';
@@ -41,7 +41,7 @@ export default function AttendanceReportsView() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h3 className="text-xl font-black text-zinc-900 dark:text-white tracking-tight">Reportes de Asistencia</h3>
-          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Asistencia por clase y estudiante, retrasos, rechazos e incidentes.</p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Asistencia por clase y estudiante, rechazos e incidentes.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => exportTo('excel')}
@@ -106,7 +106,6 @@ export default function AttendanceReportsView() {
                       <th className="p-3">Lab</th>
                       <th className="p-3 text-center">Inscritos</th>
                       <th className="p-3 text-center">Presentes</th>
-                      <th className="p-3 text-center">Fuera horario</th>
                       <th className="p-3 text-center">Ausentes</th>
                       <th className="p-3 text-center">% Asist.</th>
                     </tr>
@@ -119,7 +118,6 @@ export default function AttendanceReportsView() {
                         <td className="p-3 font-mono text-zinc-500 dark:text-zinc-400">{r.labCode}</td>
                         <td className="p-3 text-center text-zinc-600 dark:text-zinc-300">{r.expected}</td>
                         <td className="p-3 text-center text-green-600 dark:text-green-400 font-semibold">{r.present}</td>
-                        <td className="p-3 text-center text-amber-600 dark:text-amber-400">{r.outOfWindow}</td>
                         <td className="p-3 text-center text-red-600 dark:text-red-400">{r.absent}</td>
                         <td className="p-3 text-center">
                           <span className={`px-2 py-0.5 rounded-lg text-label font-bold ${r.attendanceRate >= 70 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : r.attendanceRate >= 40 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{r.attendanceRate}%</span>
@@ -132,25 +130,7 @@ export default function AttendanceReportsView() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Más retrasos */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
-              <h4 className="text-sm font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                <TrendDown className="w-4 h-4 text-amber-500" weight="fill" />
-                Más retrasos
-              </h4>
-              {report.topLate.length === 0 ? <p className="text-xs text-zinc-400 py-4">Sin registros.</p> : (
-                <div className="space-y-2">
-                  {report.topLate.slice(0, 6).map((t, i) => (
-                    <div key={t.studentId + i} className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-700 dark:text-zinc-300 truncate">{t.studentName}</span>
-                      <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{t.count}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Más rechazos */}
             <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
               <h4 className="text-sm font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">

@@ -153,6 +153,7 @@ export function evaluateFraming(metrics: FaceMetrics): FramingFeedback {
 export type DenialReason =
   | 'no-match'
   | 'low-confidence'
+  | 'no-student-record'
   | 'not-enrolled'
   | 'permissions'
   | 'liveness-failed'
@@ -194,11 +195,18 @@ export const DENIAL_REASONS: Record<DenialReason, DenialInfo> = {
     action: 'Quítate lentes o gorra, mejora la iluminación y vuelve a intentarlo.',
     retryable: true,
   },
-  'not-enrolled': {
+  'no-student-record': {
     code: 'R03',
     title: 'Registro incompleto',
     detail: 'Tu rostro está en el índice biométrico pero no tiene una ficha de estudiante asociada.',
     action: 'Reporta el código R03 en el Departamento de Sistemas para completar tu ficha.',
+    retryable: false,
+  },
+  'not-enrolled': {
+    code: 'R15',
+    title: 'No inscrito en esta clase',
+    detail: 'Tu ficha existe, pero no estás inscrito en la clase que está en curso en este laboratorio.',
+    action: 'Contacta al docente de la clase para inscribirte.',
     retryable: false,
   },
   permissions: {

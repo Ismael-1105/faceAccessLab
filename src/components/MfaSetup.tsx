@@ -159,6 +159,7 @@ export default function MfaSetup() {
               Activar MFA
             </button>
           </div>
+          <p className="text-caption text-zinc-400 dark:text-zinc-500">Solo números (6 dígitos)</p>
         </div>
       )}
 
@@ -182,6 +183,7 @@ export default function MfaSetup() {
               Desactivar MFA
             </button>
           </div>
+          <p className="text-caption text-zinc-400 dark:text-zinc-500">Solo números (6 dígitos)</p>
         </div>
       )}
     </div>

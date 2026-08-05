@@ -26,6 +26,7 @@ const LIVENESS_THRESHOLD = 75;
 export type KioskDenialReason =
   | 'no-match'
   | 'low-confidence'
+  | 'no-student-record'
   | 'not-enrolled'
   | 'permissions'
   | 'liveness-failed'
@@ -55,14 +56,17 @@ function serverKioskConfig() {
   };
 }
 
+/** Fallo de captura/decodificación de imagen: motiva `capture-failed` (R06). */
+class CaptureError extends Error {}
+
 function decodeImage(imageBase64: string): Uint8Array {
   if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(imageBase64)) {
-    throw new Error('Formato de imagen no permitido');
+    throw new CaptureError('Formato de imagen no permitido');
   }
   const raw = imageBase64.replace(/^data:image\/\w+;base64,/i, '');
   const bytes = Uint8Array.from(Buffer.from(raw, 'base64'));
   if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
-    throw new Error('La imagen está vacía o supera el límite permitido');
+    throw new CaptureError('La imagen está vacía o supera el límite permitido');
   }
   return bytes;
 }
@@ -240,7 +244,7 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
           : null;
 
         if (!student) {
-          result = { allowed: false, reason: 'not-enrolled', confidence: match.confidence, student: null, schedule: null };
+          result = { allowed: false, reason: 'no-student-record', confidence: match.confidence, student: null, schedule: null };
         } else if (match.confidence < (student.matchPercentage || 85)) {
           result = { allowed: false, reason: 'low-confidence', confidence: match.confidence, student: safeStudent, schedule: null };
         } else if (student.status !== 'allowed') {
@@ -269,15 +273,17 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
         await Attendance.findOneAndUpdate(
           { studentId: result.student.id, scheduleId: result.schedule.id, date: timing.t.date },
           {
+            // Primer ingreso gana: la hora de asistencia se fija con el primer
+            // acceso del día; los re-ingresos no la sobrescriben (A10).
             $set: {
               subject: result.schedule.subject,
               labCode: attempt.labCode,
               teacherId: attendanceSchedule?.teacherId,
               status: 'presente',
-              time: timing.t.time,
             },
             $setOnInsert: {
               id: attendanceRecordId(result.student.id, result.schedule.id, timing.t.date),
+              time: timing.t.time,
               createdAt: timing.now,
             },
           },
@@ -302,9 +308,11 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
     await persistResult(attemptId, response);
     return response;
   } catch (error) {
+    // Fallos de captura/decodificación (R06) se distinguen de errores de red (R07).
+    const reason = error instanceof CaptureError ? 'capture-failed' : 'network-error';
     await KioskAttempt.updateOne(
       { id: attemptId, status: 'processing' },
-      { $set: { status: 'failed', consumedAt: new Date(), reason: 'network-error' } },
+      { $set: { status: 'failed', consumedAt: new Date(), reason } },
     );
     throw error;
   }

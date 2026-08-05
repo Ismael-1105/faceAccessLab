@@ -145,7 +145,7 @@ export interface AcademicTerm {
   createdAt: string;
 }
 
-export type AttendanceStatus = 'presente' | 'fuera_de_horario' | 'ausente';
+export type AttendanceStatus = 'presente' | 'ausente';
 
 export interface Attendance {
   id: string;
@@ -168,7 +168,6 @@ export interface AttendanceReportRow {
   teacherName: string | null;
   expected: number;
   present: number;
-  outOfWindow: number;
   absent: number;
   attendanceRate: number;
 }
@@ -179,7 +178,6 @@ export interface StudentReportRow {
   scheduleId: string;
   subject: string;
   present: number;
-  outOfWindow: number;
   absent: number;
   attendanceRate: number;
   denials: number;
@@ -190,7 +188,6 @@ export interface AttendanceReport {
   scope: 'all' | 'docente';
   byClass: AttendanceReportRow[];
   byStudent: StudentReportRow[];
-  topLate: { studentId: string; studentName: string; count: number }[];
   topDenials: { studentId: string; studentName: string; count: number }[];
   incidentsByLab: { labCode: string; open: number; closed: number }[];
   avgRecognitionMs: number | null;

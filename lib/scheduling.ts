@@ -96,6 +96,8 @@ export type AuthResult =
  * - La clase debe estar "en curso" (el docente la inició desde su panel).
  *
  * Devuelve el motivo concreto para que el kiosco lo presente al estudiante.
+ * Todos los Schedule se normalizan con `status` (backfill en `lib/db.ts`);
+ * solo `en_curso` habilita el acceso.
  */
 export async function canAccessLab(
   studentId: string,
@@ -126,15 +128,14 @@ export async function canAccessLab(
   }
 
   // El estado de sesión gobierna la asistencia: solo "en_curso" habilita.
-  // Compatibilidad: una clase legacy sin campo status se trata como programada
-  // y sigue autorizando por horario (como ocurría antes de esta funcionalidad).
   if (inSession.status === 'finalizada') {
     return { allowed: false, schedule: inSession, reason: 'class-ended' };
   }
   if (inSession.status === 'cancelada') {
     return { allowed: false, schedule: inSession, reason: 'class-cancelled' };
   }
-  if (inSession.status === 'programada') {
+  if (inSession.status !== 'en_curso') {
+    // "programada" (o status ausente, normalizado por backfill): no autoriza.
     return { allowed: false, schedule: inSession, reason: 'class-not-started' };
   }
 

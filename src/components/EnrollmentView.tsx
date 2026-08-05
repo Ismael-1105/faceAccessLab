@@ -380,8 +380,9 @@ export default function EnrollmentView({ onComplete, onCancel, scheduleId }: Enr
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                   <input id="en-first" type="text" required placeholder="Ej. Sofia"
-                    value={firstName} onChange={e => setFirstName(e.target.value)}
+                    value={firstName} onChange={e => setFirstName(e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, ''))}
                     className={inputClass} />
+                  <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                 </div>
               </div>
               <div>
@@ -389,8 +390,9 @@ export default function EnrollmentView({ onComplete, onCancel, scheduleId }: Enr
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                   <input id="en-last" type="text" placeholder="Ej. Villarreal"
-                    value={lastName} onChange={e => setLastName(e.target.value)}
+                    value={lastName} onChange={e => setLastName(e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, ''))}
                     className={inputClass} />
+                  <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                 </div>
               </div>
               <div>
@@ -402,6 +404,7 @@ export default function EnrollmentView({ onComplete, onCancel, scheduleId }: Enr
                     aria-invalid={!!fieldErrors.email}
                     className={`${inputClass} ${fieldErrors.email ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
                 </div>
+                <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Formato: nombre@dominio.ec</p>
                 {fieldErrors.email && (
                   <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.email}</p>
                 )}
@@ -419,10 +422,11 @@ export default function EnrollmentView({ onComplete, onCancel, scheduleId }: Enr
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                   <input id="en-phone" type="tel" placeholder="Ej. 0991234567"
-                    value={phone} onChange={e => setPhone(e.target.value)}
+                    value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     aria-invalid={!!fieldErrors.phone}
                     className={`${inputClass} ${fieldErrors.phone ? 'border-red-400 dark:border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} />
                 </div>
+                <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo números (7 a 10 dígitos)</p>
                 {fieldErrors.phone && (
                   <p className="mt-1 text-caption text-red-600 dark:text-red-400">{fieldErrors.phone}</p>
                 )}

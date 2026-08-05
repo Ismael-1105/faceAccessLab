@@ -144,7 +144,7 @@ export interface IEnrollment extends Document {
 
 // ── Funcionalidad 5: control de asistencia ────────────────────────────────
 
-export type AttendanceStatus = 'presente' | 'fuera_de_horario' | 'ausente';
+export type AttendanceStatus = 'presente' | 'ausente';
 
 export interface IAttendance extends Document {
   id: string;
@@ -417,7 +417,7 @@ const AttendanceSchema = new Schema<IAttendance>({
   subject: { type: String },
   labCode: { type: String },
   teacherId: { type: String },
-  status: { type: String, enum: ['presente', 'fuera_de_horario', 'ausente'], default: 'presente' },
+  status: { type: String, enum: ['presente', 'ausente'], default: 'presente' },
   createdAt: { type: Date, default: Date.now },
 }, { id: false });
 

@@ -9,7 +9,6 @@ export interface ReportRow {
   teacherName: string | null;
   expected: number;
   present: number;
-  outOfWindow: number;
   absent: number;
   attendanceRate: number;
 }
@@ -20,7 +19,6 @@ export interface StudentReportRow {
   scheduleId: string;
   subject: string;
   present: number;
-  outOfWindow: number;
   absent: number;
   attendanceRate: number;
   /** Rechazos (accesos denegados) del estudiante en el período. */
@@ -32,8 +30,6 @@ export interface AttendanceReport {
   scope: 'all' | 'docente';
   byClass: ReportRow[];
   byStudent: StudentReportRow[];
-  /** Estudiantes con más retrasos (ingresos fuera de horario), desc. */
-  topLate: { studentId: string; studentName: string; count: number }[];
   /** Estudiantes con más rechazos, desc. */
   topDenials: { studentId: string; studentName: string; count: number }[];
   /** Incidentes agrupados por laboratorio. */
@@ -60,7 +56,6 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
       scope: 'all',
       byClass: [],
       byStudent: [],
-      topLate: [],
       topDenials: [],
       incidentsByLab: [],
       avgRecognitionMs: null,
@@ -103,7 +98,6 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
     const enrolled = enrollments.filter(e => e.scheduleId === s.id);
     const classAtt = attendances.filter(a => a.scheduleId === s.id);
     const present = classAtt.filter(a => a.status === 'presente').length;
-    const outOfWindow = classAtt.filter(a => a.status === 'fuera_de_horario').length;
     const presentStudents = new Set(classAtt.filter(a => a.status === 'presente').map(a => a.studentId));
     const absent = Math.max(0, enrolled.length - presentStudents.size);
     return {
@@ -114,7 +108,6 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
       teacherName: teacherName(s.teacherId),
       expected: enrolled.length,
       present,
-      outOfWindow,
       absent,
       attendanceRate: rate(present, enrolled.length),
     };
@@ -132,19 +125,17 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
         scheduleId: s.id,
         subject: s.subject,
         present: 0,
-        outOfWindow: 0,
         absent: 0,
         attendanceRate: 0,
         denials: 0,
       };
       if (a.status === 'presente') existing.present += 1;
-      else if (a.status === 'fuera_de_horario') existing.outOfWindow += 1;
       else existing.absent += 1;
       byStudentMap.set(key, existing);
     }
   }
   for (const row of byStudentMap.values()) {
-    row.attendanceRate = rate(row.present, row.present + row.outOfWindow + row.absent);
+    row.attendanceRate = rate(row.present, row.present + row.absent);
   }
 
   // Rechazos por estudiante.
@@ -158,17 +149,7 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
     row.denials = denialCount.get(row.studentId) || 0;
   });
 
-  // Fuera de horario por estudiante (retrasos).
-  const lateCount = new Map<string, number>();
-  attendances.filter(a => a.status === 'fuera_de_horario').forEach(a => {
-    lateCount.set(a.studentId, (lateCount.get(a.studentId) || 0) + 1);
-  });
-
   const byStudent = Array.from(byStudentMap.values());
-  const topLate = Array.from(lateCount.entries())
-    .map(([studentId, count]) => ({ studentId, studentName: nameOf(studentId), count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
   const topDenials = Array.from(denialCount.entries())
     .map(([studentId, count]) => ({ studentId, studentName: denialName.get(studentId) || studentId, count }))
     .sort((a, b) => b.count - a.count)
@@ -189,7 +170,6 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
     scope: 'all',
     byClass: byClass.sort((a, b) => b.present - a.present),
     byStudent,
-    topLate,
     topDenials,
     incidentsByLab,
     avgRecognitionMs: avgRecognition[0]?.avg ?? null,

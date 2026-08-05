@@ -9,7 +9,6 @@ import { api } from '../lib/api.ts';
 
 const STATUS_BADGE: Record<Attendance['status'], { label: string; cls: string }> = {
   presente: { label: 'Presente', cls: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' },
-  fuera_de_horario: { label: 'Fuera de horario', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400' },
   ausente: { label: 'Ausente', cls: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400' },
 };
 
@@ -62,7 +61,6 @@ export default function AttendanceView() {
           className="text-xs p-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition-all cursor-pointer">
           <option value="all">Todos los estados</option>
           <option value="presente">Presentes</option>
-          <option value="fuera_de_horario">Fuera de horario</option>
           <option value="ausente">Ausentes</option>
         </select>
       </div>

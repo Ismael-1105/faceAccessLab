@@ -98,6 +98,7 @@ export default function ForgotPasswordView() {
                     className="w-full text-sm p-2.5 pl-10 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all"
                   />
                 </div>
+                <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Formato: nombre@dominio.ec</p>
               </div>
 
               {error && (

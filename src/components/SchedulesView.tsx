@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CalendarBlank, Plus, X, PencilSimple, Trash, CircleNotch, CheckCircle,
-  Users as UsersIcon, Clock, Flask, GraduationCap, Play, StopCircle, MagnifyingGlass,
+  Users as UsersIcon, Clock, Flask, GraduationCap, Play, StopCircle, XCircle, MagnifyingGlass,
 } from '@phosphor-icons/react';
 import type { Schedule, Enrollment, Lab, Student as StudentT, AdminUser } from '../types.ts';
 import { api, getToken } from '../lib/api.ts';
@@ -38,6 +38,7 @@ export default function SchedulesView() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Schedule | null>(null);
   const [enrollOpenFor, setEnrollOpenFor] = useState<Schedule | null>(null);
   const [enrollStudent, setEnrollStudent] = useState('');
   const [scheduleSearch, setScheduleSearch] = useState('');
@@ -161,15 +162,33 @@ export default function SchedulesView() {
       teacherName(s.teacherId).toLowerCase().includes(q);
   });
 
-  /** Inicia/finaliza la sesión de la clase (estado de sesión). */
+  /** Inicia/finaliza/cancela la sesión de la clase (estado de sesión). */
   const changeStatus = async (schedule: Schedule, status: Schedule['status']) => {
     try {
       await api.updateSchedule(schedule.id, { status });
-      setNotice(status === 'en_curso' ? `Sesión iniciada: ${schedule.subject}` : `Sesión finalizada: ${schedule.subject}`);
+      setNotice(
+        status === 'en_curso' ? `Sesión iniciada: ${schedule.subject}`
+        : status === 'cancelada' ? `Clase cancelada: ${schedule.subject}`
+        : `Sesión finalizada: ${schedule.subject}`,
+      );
       await load();
       setTimeout(() => setNotice(''), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cambiar estado');
+    }
+  };
+
+  /** Cancela la clase (acción terminal, A7). */
+  const handleCancel = async () => {
+    if (!cancelTarget) return;
+    try {
+      await api.updateSchedule(cancelTarget.id, { status: 'cancelada' });
+      setCancelTarget(null);
+      setNotice(`Clase cancelada: ${cancelTarget.subject}`);
+      await load();
+      setTimeout(() => setNotice(''), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cancelar la clase');
     }
   };
 
@@ -304,6 +323,13 @@ export default function SchedulesView() {
                     <GraduationCap className="w-3.5 h-3.5 inline mr-1" weight="fill" />
                     Registrar
                   </button>
+                  {status !== 'finalizada' && status !== 'cancelada' && (
+                    <button onClick={() => setCancelTarget(schedule)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Cancelar clase (acción terminal)">
+                      <XCircle className="w-3.5 h-3.5" weight="fill" /> Cancelar
+                    </button>
+                  )}
                   {isTeacher && status !== 'cancelada' && (
                     status === 'en_curso'
                       ? <button onClick={() => changeStatus(schedule, 'finalizada')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-all cursor-pointer"><StopCircle className="w-3.5 h-3.5" weight="fill" /> Finalizar</button>
@@ -457,11 +483,13 @@ export default function SchedulesView() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Nombre</label>
-                      <input type="text" value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value })} placeholder="Ej. María" className={inputClass} />
+                      <input type="text" value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, '') })} placeholder="Ej. María" className={inputClass} />
+                      <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Apellido</label>
-                      <input type="text" value={regForm.lastName} onChange={e => setRegForm({ ...regForm, lastName: e.target.value })} placeholder="Ej. Pérez" className={inputClass} />
+                      <input type="text" value={regForm.lastName} onChange={e => setRegForm({ ...regForm, lastName: e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, '') })} placeholder="Ej. Pérez" className={inputClass} />
+                      <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                     </div>
                   </div>
                   <div>
@@ -496,6 +524,16 @@ export default function SchedulesView() {
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={cancelTarget !== null}
+        title="Cancelar clase"
+        message={`¿Cancelar la clase "${cancelTarget?.subject}"? La cancelación es definitiva y la sesión no podrá re-iniciarse.`}
+        confirmLabel="Cancelar clase"
+        variant="danger"
+        onConfirm={handleCancel}
+        onCancel={() => setCancelTarget(null)}
       />
     </div>
   );

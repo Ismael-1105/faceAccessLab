@@ -725,7 +725,7 @@ export default function AdminView({ mode: navigationMode }: { mode?: 'demo' | 'a
                   <input
                     type="text"
                     value={typedConfirm}
-                    onChange={e => setTypedConfirm(e.target.value)}
+                    onChange={e => setTypedConfirm(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase())}
                     placeholder="Escribe LIMPIAR"
                     className="w-full p-2.5 rounded-lg border border-red-300 dark:border-red-700 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-xs transition-all"
                   />

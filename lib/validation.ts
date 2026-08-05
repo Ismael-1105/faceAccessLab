@@ -131,5 +131,5 @@ export const attendanceCreateSchema = z.object({
   subject: z.string().trim().max(120).optional(),
   labCode: z.string().trim().max(30).optional(),
   teacherId: z.string().max(60).optional(),
-  status: z.enum(['presente', 'fuera_de_horario', 'ausente']),
+  status: z.enum(['presente', 'ausente']),
 }).strict();

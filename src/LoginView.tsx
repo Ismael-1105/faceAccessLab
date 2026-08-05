@@ -82,6 +82,7 @@ export default function LoginView() {
                 placeholder="docente@uide.edu.ec"
                 className="w-full text-sm p-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all"
               />
+              <p className="text-caption text-zinc-400 dark:text-zinc-500 mt-1.5">Formato: nombre@dominio.ec</p>
             </div>
 
             <div>

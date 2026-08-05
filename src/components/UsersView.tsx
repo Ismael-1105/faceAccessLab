@@ -364,9 +364,10 @@ export default function UsersView() {
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                       <input id="u-name" type="text" placeholder="Ej. María Fernanda López"
-                        value={formName} onChange={e => setFormName(e.target.value)}
+                        value={formName} onChange={e => setFormName(e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, ''))}
                         className={inputClass} />
                     </div>
+                    <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                   </div>
                   <div>
                     <label htmlFor="u-email" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Correo</label>
@@ -376,6 +377,7 @@ export default function UsersView() {
                         value={formEmail} onChange={e => setFormEmail(e.target.value)}
                         className={inputClass} />
                     </div>
+                    <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Formato: nombre@dominio.ec</p>
                   </div>
                   <div>
                     <label htmlFor="u-password" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">

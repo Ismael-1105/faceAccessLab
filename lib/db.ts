@@ -1,9 +1,32 @@
 import mongoose from 'mongoose';
 import dns from 'dns';
+import { Schedule } from './models.ts';
 
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 let isConnecting = false;
+let ranMigrations = false;
+
+/**
+ * Migración idempotente (A3): normaliza el estado de sesión de todas las
+ * clases. Las clases legacy sin `status` pasan a `programada`, de modo que
+ * solo `en_curso` habilita acceso en el kiosco.
+ */
+async function runMigrations(): Promise<void> {
+  if (ranMigrations) return;
+  ranMigrations = true;
+  try {
+    const res = await Schedule.updateMany(
+      { status: { $exists: false } },
+      { $set: { status: 'programada' } },
+    );
+    if (res.modifiedCount > 0) {
+      console.log(`[DB] Backfill Schedule.status → programada: ${res.modifiedCount} documento(s)`);
+    }
+  } catch (error) {
+    console.error('[DB] Backfill Schedule.status falló:', error);
+  }
+}
 
 function getMongoUri(): string {
   const uri = process.env.MONGODB_URI;
@@ -39,6 +62,7 @@ export async function connectDB(): Promise<typeof mongoose> {
       connectTimeoutMS: 15000,
     });
     console.log('[DB] MongoDB connected');
+    await runMigrations();
     return mongoose;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

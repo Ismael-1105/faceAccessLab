@@ -19,7 +19,7 @@ import {
   academicTermCreateSchema,
 } from './validation.ts';
 import { recordAudit, getAuditLogsPage, getClientIp, getUserAgent } from './audit.ts';
-import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow } from './scheduling.ts';
+import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow, toMinutes } from './scheduling.ts';
 import { getAttendanceReport, getLabDashboard } from './reports.ts';
 import { recordDenialEvidence } from './evidence.ts';
 import { getPresignedUrl } from './s3.ts';
@@ -1209,6 +1209,28 @@ export async function handleUpdateSchedule(req: Request): Promise<Response> {
     }
   }
 
+  // A7: la cancelación es terminal; una clase cancelada no se puede re-iniciar
+  // ni modificar.
+  if (schedule.status === 'cancelada') {
+    return errorResponse('Una clase cancelada no puede modificarse', 400);
+  }
+
+  // A8: la sesión solo puede iniciarse dentro de la ventana horaria de la
+  // clase (con margen de 15 minutos antes del inicio oficial).
+  const SESSION_START_MARGIN_MIN = 15;
+  if (updates.status === 'en_curso') {
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const startMin = toMinutes(schedule.startTime) - SESSION_START_MARGIN_MIN;
+    const endMin = toMinutes(schedule.endTime);
+    if (nowMin < startMin || nowMin > endMin) {
+      return errorResponse(
+        `La clase solo puede iniciarse entre ${schedule.startTime} y ${schedule.endTime} (máx. 15 min antes)`,
+        400,
+      );
+    }
+  }
+
   const updated = await Schedule.findOneAndUpdate({ id }, { $set: updates }, { new: true });
   if (!updated) return errorResponse('Clase no encontrada', 404);
 
@@ -1226,7 +1248,7 @@ export async function handleUpdateSchedule(req: Request): Promise<Response> {
 
   await recordAudit({
     ...auditContext(actor, req),
-    action: 'schedule.update',
+    action: updates.status === 'cancelada' ? 'schedule.cancel' : 'schedule.update',
     targetType: 'schedule',
     targetId: id,
     details: `Clase ${updated.subject} ${updates.status ? `→ estado ${updates.status}` : 'actualizada'}`,
@@ -1659,14 +1681,10 @@ export async function handleExportAttendanceReport(req: Request): Promise<Respon
   if (format === 'excel') {
     const rows: string[] = [];
     rows.push('Reporte de Asistencia - FaceAccess Lab');
-    rows.push('Materia,Docente,Lab,Inscritos,Presentes,Fuera de horario,Ausentes,% Asistencia');
+    rows.push('Materia,Docente,Lab,Inscritos,Presentes,Ausentes,% Asistencia');
     report.byClass.forEach(r => rows.push(
-      `"${esc(r.subject)}","${esc(r.teacherName)}",${esc(r.labCode)},${r.expected},${r.present},${r.outOfWindow},${r.absent},${r.attendanceRate}`
+      `"${esc(r.subject)}","${esc(r.teacherName)}",${esc(r.labCode)},${r.expected},${r.present},${r.absent},${r.attendanceRate}`
     ));
-    rows.push('');
-    rows.push('Alumnos con más retrasos');
-    rows.push('Estudiante,Cantidad');
-    report.topLate.forEach(t => rows.push(`"${esc(t.studentName)}",${t.count}`));
     rows.push('');
     rows.push('Alumnos con más rechazos');
     rows.push('Estudiante,Cantidad');
@@ -1694,7 +1712,6 @@ export async function handleExportAttendanceReport(req: Request): Promise<Respon
       <td>${esc(r.labCode)}</td>
       <td class="num">${r.expected}</td>
       <td class="num">${r.present}</td>
-      <td class="num">${r.outOfWindow}</td>
       <td class="num">${r.absent}</td>
       <td class="num">${r.attendanceRate}%</td>
     </tr>`).join('');
@@ -1718,8 +1735,8 @@ export async function handleExportAttendanceReport(req: Request): Promise<Respon
   <p class="sub">FaceAccess Lab · Generado ${new Date().toLocaleString('es-EC')} · Tiempo promedio de reconocimiento: ${report.avgRecognitionMs ? Math.round(report.avgRecognitionMs) + ' ms' : '—'}</p>
   <h2>Asistencia por clase</h2>
   <table>
-    <thead><tr><th>Materia</th><th>Docente</th><th>Lab</th><th class="num">Inscritos</th><th class="num">Presentes</th><th class="num">Fuera de horario</th><th class="num">Ausentes</th><th class="num">% Asist.</th></tr></thead>
-    <tbody>${rowsHtml || '<tr><td colspan="8">Sin datos</td></tr>'}</tbody>
+    <thead><tr><th>Materia</th><th>Docente</th><th>Lab</th><th class="num">Inscritos</th><th class="num">Presentes</th><th class="num">Ausentes</th><th class="num">% Asist.</th></tr></thead>
+    <tbody>${rowsHtml || '<tr><td colspan="7">Sin datos</td></tr>'}</tbody>
   </table>
   <footer>Reporte generado automáticamente por FaceAccess Lab.</footer>
 </body></html>`;

@@ -325,9 +325,10 @@ export default function LabsView() {
                     <div className="relative">
                       <Flask className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
                       <input id="lab-name" type="text" placeholder="Ej. Sistemas Operativos"
-                        value={formName} onChange={e => setFormName(e.target.value)}
+                        value={formName} onChange={e => setFormName(e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ' -]/g, ''))}
                         className={inputClass} />
                     </div>
+                    <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Solo letras</p>
                   </div>
                   <div>
                     <label htmlFor="lab-code" className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5">Código</label>

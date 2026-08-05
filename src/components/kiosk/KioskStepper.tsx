@@ -27,6 +27,7 @@ const FAILING_STAGE: Record<DenialReason, ScanStageId> = {
   'liveness-failed': 'liveness',
   'no-match': 'compare',
   'low-confidence': 'compare',
+  'no-student-record': 'compare',
   'not-enrolled': 'compare',
   'network-error': 'compare',
   permissions: 'authorize',
