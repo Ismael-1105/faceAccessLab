@@ -24,6 +24,7 @@ function mockContextValue() {
     theme: 'light' as const,
     toggleTheme: vi.fn(),
     user: { id: 'doc-1', email: 'docente@faceaccess.lab', password: '', name: 'Dr. Test', role: 'docente' as const },
+    sessionReady: true,
     handleLogin: vi.fn(),
     handleLogout: vi.fn(),
     students: INITIAL_STUDENTS as Student[],

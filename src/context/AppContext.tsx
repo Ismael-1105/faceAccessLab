@@ -11,6 +11,7 @@ interface AppContextType {
   theme: Theme;
   toggleTheme: () => void;
   user: AuthUser | null;
+  sessionReady: boolean;
   handleLogin: (authUser: AuthUser) => void;
   handleLogout: () => void;
   students: Student[];
@@ -68,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [logs, setLogs] = useState<AccessLog[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -110,6 +112,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const refreshed = getToken();
             if (ok && refreshed) applyUser(refreshed);
             else setToken(null);
+            setSessionReady(true);
           });
           return;
         }
@@ -118,6 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToken(null);
       }
     }
+    setSessionReady(true);
   }, []);
 
   useEffect(() => {
@@ -212,7 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      theme, toggleTheme, user, handleLogin, handleLogout,
+      theme, toggleTheme, user, sessionReady, handleLogin, handleLogout,
       students, setStudents, logs, setLogs, alerts, setAlerts,
       stats, setStats, connectionStatus, setConnectionStatus,
       handleToggleStudent, handleAddStudent, handleAddLog, handleIncrementStats,
