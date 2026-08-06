@@ -17,7 +17,7 @@ import {
   academicTermCreateSchema,
 } from './validation.ts';
 import { recordAudit, getAuditLogsPage, getClientIp, getUserAgent } from './audit.ts';
-import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow, toMinutes } from './scheduling.ts';
+import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow } from './scheduling.ts';
 import { getAttendanceReport, getLabDashboard } from './reports.ts';
 import { recordDenialEvidence } from './evidence.ts';
 import { getPresignedUrl } from './s3.ts';
@@ -1215,22 +1215,6 @@ export async function handleUpdateSchedule(req: Request): Promise<Response> {
   // ni modificar.
   if (schedule.status === 'cancelada') {
     return errorResponse('Una clase cancelada no puede modificarse', 400);
-  }
-
-  // A8: la sesión solo puede iniciarse dentro de la ventana horaria de la
-  // clase (con margen de 15 minutos antes del inicio oficial).
-  const SESSION_START_MARGIN_MIN = 15;
-  if (updates.status === 'en_curso') {
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const startMin = toMinutes(schedule.startTime) - SESSION_START_MARGIN_MIN;
-    const endMin = toMinutes(schedule.endTime);
-    if (nowMin < startMin || nowMin > endMin) {
-      return errorResponse(
-        `La clase solo puede iniciarse entre ${schedule.startTime} y ${schedule.endTime} (máx. 15 min antes)`,
-        400,
-      );
-    }
   }
 
   const updated = await Schedule.findOneAndUpdate({ id }, { $set: updates }, { new: true });

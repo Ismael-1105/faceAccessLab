@@ -81,7 +81,11 @@ async function request<T>(path: string, options: RequestInit = {}, retried = fal
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401 && !retried) {
+  // Endpoints de autenticación: un 401 es un error de credenciales, no una
+  // sesión expirada. No tiene sentido intentar rotar el refresh token.
+  const isAuthEndpoint = path.startsWith('/auth/');
+
+  if (res.status === 401 && !retried && !isAuthEndpoint) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       const retryHeaders: Record<string, string> = { ...headers, Authorization: `Bearer ${getToken()}` };
