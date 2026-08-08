@@ -48,3 +48,7 @@ uploads/
 coverage/
 playwright-report/
 test-results/
+
+# Bytecode de Python: restos del backend anterior en Lambda, ya migrado a Next.js
+__pycache__/
+*.pyc
