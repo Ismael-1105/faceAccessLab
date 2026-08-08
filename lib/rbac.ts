@@ -4,7 +4,7 @@
  * Todas las rutas y handlers deben pasar por estas funciones. Elimina las
  * verificaciones duplicadas de rol y centraliza la lógica de permisos.
  */
-import { getTokenFromRequest, verifyToken, type TokenPayload } from './auth.ts';
+import { ACCESS_COOKIE, getTokenFromRequest, verifyToken, type TokenPayload } from './auth.ts';
 
 export type AppRole = 'admin' | 'docente' | 'estudiante';
 
@@ -28,6 +28,50 @@ export class UnauthorizedError extends Error {
 /** Resuelve el payload del token desde la request. */
 export function getActor(req: Request): TokenPayload | null {
   const token = getTokenFromRequest(req);
+  if (!token) return null;
+  try {
+    return verifyToken(token);
+  } catch {
+    return null;
+  }
+}
+
+/** Lee una cookie del header `Cookie`. Devuelve null si no está o no decodifica. */
+function readCookie(req: Request, name: string): string | null {
+  const cookieHeader = req.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const [rawName, ...rawValue] = part.trim().split('=');
+    if (rawName === name) {
+      try {
+        return decodeURIComponent(rawValue.join('='));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Excepción ÚNICA a la regla de `lib/auth.ts` ("nunca por cookie"): resuelve el
+ * actor por cabecera Authorization y, si no la hay, por la cookie de acceso.
+ *
+ * Existe porque una etiqueta `<img>` no puede enviar cabeceras: el navegador
+ * nunca añade Authorization a la petición de una imagen, así que el proxy de
+ * fotografías devolvía 401 para toda foto alojada en S3.
+ *
+ * SOLO debe usarla `app/api/photos/[key]/route.ts`. El resto de la API sigue
+ * exigiendo la cabecera. La cookie es HttpOnly y SameSite=Strict, y el token se
+ * valida igual con `verifyToken`, así que no se relaja la verificación: solo se
+ * amplía de dónde se lee. La autorización por recurso la sigue haciendo
+ * `canReadPhoto`, que no se toca.
+ */
+export function getActorFromHeaderOrCookie(req: Request): TokenPayload | null {
+  const fromHeader = getActor(req);
+  if (fromHeader) return fromHeader;
+
+  const token = readCookie(req, ACCESS_COOKIE);
   if (!token) return null;
   try {
     return verifyToken(token);
