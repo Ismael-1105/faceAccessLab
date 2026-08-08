@@ -120,7 +120,11 @@ export async function searchFace(imageBytes: Uint8Array): Promise<FaceMatchResul
     return {
       studentId: bestMatch.Face.ExternalImageId || null,
       studentName: null,
-      confidence: parseFloat((bestMatch.Face.Confidence ?? 0).toFixed(1)),
+      // Similarity es la semejanza entre el rostro capturado y el almacenado.
+      // Face.Confidence es la confianza de que la región indexada contiene un
+      // rostro, y ronda 99.9 siempre: usarla dejaba sin efecto el umbral por
+      // alumno de la pantalla de Calibración.
+      confidence: parseFloat((bestMatch.Similarity ?? 0).toFixed(1)),
       faceId: bestMatch.Face.FaceId || null,
       externalImageId: bestMatch.Face.ExternalImageId || null,
     };
