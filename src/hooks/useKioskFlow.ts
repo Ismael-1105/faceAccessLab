@@ -285,10 +285,17 @@ export function useKioskFlow(): KioskFlow {
     performScanRef.current();
   }, []);
 
-  const handleLivenessFail = useCallback((_message: string) => {
+  const handleLivenessFail = useCallback((message: string) => {
     setLivenessSessionId(null);
-    performScanRef.current();
-  }, []);
+    // Antes seguía a la comparación igual que el éxito, descartando el mensaje.
+    // El usuario veía la barra completarse y, segundos después, un rechazo
+    // genérico sin relación aparente con lo ocurrido. El backend ya denegaba
+    // bien (vuelve a consultar el resultado oficial en AWS), así que esto no era
+    // un agujero de seguridad, pero sí ocultaba el motivo real y gastaba una
+    // llamada de comparación de más.
+    console.warn('[Kiosk] Prueba de vida fallida:', message);
+    finishDenied('liveness-failed', 0);
+  }, [finishDenied]);
 
   const performScan = useCallback(async (frameArg?: string) => {
     if (scanningRef.current) return;
