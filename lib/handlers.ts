@@ -18,6 +18,7 @@ import {
 } from './validation.ts';
 import { recordAudit, getAuditLogsPage, getClientIp, getUserAgent } from './audit.ts';
 import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow, isSessionActive } from './scheduling.ts';
+import { attendanceRecordId, isMongoDuplicateKeyError } from './attendance-idempotency.ts';
 import { getAttendanceReport, getLabDashboard } from './reports.ts';
 import { recordDenialEvidence } from './evidence.ts';
 import { getPresignedUrl } from './s3.ts';
@@ -470,35 +471,59 @@ async function getTeacherScheduleIds(teacherId: string): Promise<string[]> {
  * F10: al finalizar una clase, marca como "ausente" a los inscritos que aún no
  * registraron asistencia hoy. Es la automatización de un proceso manual.
  */
-export async function markAbsentees(scheduleId: string): Promise<number> {  const now = new Date();
+export async function markAbsentees(scheduleId: string): Promise<number> {
+  const now = new Date();
   const today = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   const enrolled = await Enrollment.find({ scheduleId, active: true });
   const existingStudentIds = new Set(await getExistingStudentIds(enrolled.map(e => e.studentId)));
-  const present = await Attendance.find({ scheduleId, date: today, status: 'presente' });
-  const presentIds = new Set(present.map(a => a.studentId));
+  // CUALQUIER registro de hoy excluye, no solo los presentes. Filtrar por
+  // status: 'presente' dejaba fuera a los ya marcados ausentes, de modo que la
+  // secuencia Finalizar, Iniciar, Finalizar los insertaba otra vez.
+  const already = await Attendance.find({ scheduleId, date: today });
+  const alreadyIds = new Set(already.map(a => a.studentId));
 
-  const absentees = enrolled.filter(e => existingStudentIds.has(e.studentId) && !presentIds.has(e.studentId));
+  const absentees = enrolled.filter(e => existingStudentIds.has(e.studentId) && !alreadyIds.has(e.studentId));
   if (absentees.length === 0) return 0;
 
   const schedule = await Schedule.findOne({ id: scheduleId });
   const pad = (n: number) => n.toString().padStart(2, '0');
 
-  const docs = absentees.map(e => ({
-    id: `att-${uuidv4().slice(0, 8)}`,
-    studentId: e.studentId,
-    scheduleId,
-    subject: schedule?.subject,
-    labCode: schedule?.labCode,
-    teacherId: schedule?.teacherId,
-    status: 'ausente' as const,
-    date: today,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-    createdAt: now,
+  // ID determinista y upsert: aunque dos ejecuciones se solapen, o el filtro de
+  // arriba no haya visto un registro recién creado, el índice único convierte el
+  // segundo intento en una actualización y no en un duplicado.
+  const ops = absentees.map(e => ({
+    updateOne: {
+      filter: { studentId: e.studentId, scheduleId, date: today },
+      update: {
+        $setOnInsert: {
+          id: attendanceRecordId(e.studentId, scheduleId, today),
+          studentId: e.studentId,
+          scheduleId,
+          subject: schedule?.subject,
+          labCode: schedule?.labCode,
+          teacherId: schedule?.teacherId,
+          status: 'ausente' as const,
+          date: today,
+          time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+          createdAt: now,
+        },
+      },
+      upsert: true,
+    },
   }));
 
-  await Attendance.insertMany(docs);
-  return absentees.length;
+  try {
+    const res = await Attendance.bulkWrite(ops, { ordered: false });
+    // Solo cuentan las inserciones reales: si un alumno ya tenía registro, no se
+    // ha marcado a nadie nuevo y el contador no debe inflarse.
+    return res.upsertedCount ?? 0;
+  } catch (error) {
+    // Carrera entre dos finalizaciones simultáneas: el índice único rechaza la
+    // perdedora, que es exactamente el comportamiento buscado.
+    if (!isMongoDuplicateKeyError(error)) throw error;
+    return 0;
+  }
 }
 
 export async function handleGetStudents(req: Request): Promise<Response> {

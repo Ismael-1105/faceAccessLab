@@ -45,6 +45,9 @@ async function ensureIndexes() {
   await Attendance.collection.createIndex({ scheduleId: 1, date: -1 });
   await Attendance.collection.createIndex({ studentId: 1, date: -1 });
   await Attendance.collection.createIndex({ teacherId: 1, date: -1 });
+  // ISS-19. Falla si la colección ya tiene duplicados: comprobarlo antes con
+  // `npx tsx scripts/check-attendance-duplicates.ts`, que es de solo lectura.
+  await Attendance.collection.createIndex({ studentId: 1, scheduleId: 1, date: 1 }, { unique: true });
 
   console.log('[Indexes] Índices verificados/creados.');
   await mongoose.disconnect();

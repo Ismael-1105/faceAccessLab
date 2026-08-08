@@ -481,6 +481,12 @@ const AttendanceSchema = new Schema<IAttendance>({
 AttendanceSchema.index({ scheduleId: 1, date: -1 });
 AttendanceSchema.index({ studentId: 1, date: -1 });
 AttendanceSchema.index({ teacherId: 1, date: -1 });
+// ISS-19: una sola asistencia por estudiante, clase y fecha. Es lo que hace
+// idempotentes tanto el upsert del kiosco como el marcado de ausentes, y lo que
+// impide que un mismo alumno figure a la vez presente y ausente en la misma
+// sesión. Con duplicados previos en la colección, esta construcción falla al
+// inicializar el modelo: ver scripts/check-attendance-duplicates.ts.
+AttendanceSchema.index({ studentId: 1, scheduleId: 1, date: 1 }, { unique: true });
 
 const KioskAttemptSchema = new Schema<IKioskAttempt>({
   id: { type: String, required: true, unique: true },
