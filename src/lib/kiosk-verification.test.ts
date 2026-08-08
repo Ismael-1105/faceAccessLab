@@ -261,9 +261,28 @@ describe('kiosco: foto firmada del alumno (ISS-15)', () => {
     expect(result.studentPhotoUrl).toBeNull();
   });
 
-  // El punto que el contrato no contemplaba: resultPayload se reproduce tal cual
-  // cuando el intento ya se consumió, y una URL firmada guardada llega caducada.
-  it('regenera la URL al reproducir un intento ya consumido, sin servir la guardada', async () => {
+  it('persiste la clave de la foto y nunca la URL firmada', async () => {
+    setupAttempt();
+    mocks.getPresignedUrl.mockResolvedValue('https://s3.example/firmada-1');
+    mocks.getLivenessResult.mockResolvedValue({ status: 'SUCCEEDED', confidence: 90, referenceImageBytes: new Uint8Array([1, 2, 3]) });
+    mocks.searchFace.mockResolvedValue({ studentId: 'student-1', confidence: 92, faceId: 'f1', externalImageId: 'student-1' });
+    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent()));
+
+    await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    const persistCall = mocks.models.KioskAttempt.updateOne.mock.calls
+      .find(([, update]) => update?.$set?.resultPayload);
+    const payload = JSON.parse(persistCall![1].$set.resultPayload);
+
+    expect(payload.studentPhotoKey).toBe('students/student-1.jpg');
+    // Una URL firmada caduca: no puede quedar guardada.
+    expect(payload.studentPhotoUrl).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain('firmada-1');
+  });
+
+  // El punto que el contrato no contemplaba: resultPayload se reproduce cuando
+  // el intento ya se consumió, y una URL firmada guardada llegaría caducada.
+  it('vuelve a firmar al reproducir un intento ya consumido', async () => {
     const cachedPayload = JSON.stringify({
       attemptId: 'kat-1',
       allowed: true,
@@ -271,23 +290,43 @@ describe('kiosco: foto firmada del alumno (ISS-15)', () => {
       confidence: 92,
       student: { id: 'student-1', name: 'Ana', career: 'TIC', avatarInitials: 'AN' },
       schedule: { id: 'sched-1', subject: 'SO', startTime: '08:00', endTime: '10:00' },
-      studentPhotoUrl: 'https://s3.example/CADUCADA',
+      studentPhotoKey: 'students/student-1.jpg',
     });
 
     mocks.matchesToken.mockReturnValue(true);
     mocks.models.KioskAttempt.findOne
       .mockResolvedValueOnce(query({ attemptTokenHash: 'hash' }))   // autorización
       .mockResolvedValueOnce(query({ resultPayload: cachedPayload })); // ya consumido
-    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent()));
     mocks.getPresignedUrl.mockResolvedValue('https://s3.example/firmada-nueva');
 
     const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
 
     expect(result.studentPhotoUrl).toBe('https://s3.example/firmada-nueva');
-    expect(result.studentPhotoUrl).not.toBe('https://s3.example/CADUCADA');
     expect(mocks.getPresignedUrl).toHaveBeenCalledWith('students/student-1.jpg', 120);
     // El resto del resultado sí se reproduce del payload guardado.
     expect(result.allowed).toBe(true);
     expect(result.confidence).toBe(92);
+    // La clave es interna: no se filtra al kiosco.
+    expect((result as unknown as Record<string, unknown>).studentPhotoKey).toBeUndefined();
+  });
+
+  it('reproduce sin foto los intentos anteriores al campo', async () => {
+    // Payload legacy: no trae studentPhotoKey.
+    const legacy = JSON.stringify({
+      attemptId: 'kat-1', allowed: true, reason: null, confidence: 92,
+      student: { id: 'student-1', name: 'Ana', career: 'TIC', avatarInitials: 'AN' },
+      schedule: { id: 'sched-1', subject: 'SO', startTime: '08:00', endTime: '10:00' },
+    });
+
+    mocks.matchesToken.mockReturnValue(true);
+    mocks.models.KioskAttempt.findOne
+      .mockResolvedValueOnce(query({ attemptTokenHash: 'hash' }))
+      .mockResolvedValueOnce(query({ resultPayload: legacy }));
+
+    const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    expect(result.allowed).toBe(true);
+    expect(result.studentPhotoUrl).toBeNull();
+    expect(mocks.getPresignedUrl).not.toHaveBeenCalled();
   });
 });

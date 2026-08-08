@@ -73,6 +73,17 @@ export interface KioskVerificationResult {
  */
 type KioskDecision = Omit<KioskVerificationResult, 'attemptId' | 'studentPhotoUrl'>;
 
+/**
+ * Lo que se guarda en `KioskAttempt.resultPayload`. Guarda la CLAVE de S3, no la
+ * URL firmada: la clave es estable y no es un secreto (leerla sigue exigiendo
+ * pasar por /api/photos con `canReadPhoto`), mientras que una URL firmada caduca
+ * y no debe quedar persistida. Al reproducir se vuelve a firmar desde la clave.
+ */
+type PersistedResult = KioskDecision & {
+  attemptId: string;
+  studentPhotoKey: string | null;
+};
+
 /** Firma la foto del alumno para la pantalla de resultado. Nunca lanza. */
 async function signStudentPhoto(photoKey?: string | null): Promise<string | null> {
   if (!photoKey) return null;
@@ -157,7 +168,7 @@ export async function assertKioskAttemptForCredentials(attemptId: string, attemp
   return !!attempt?.attemptTokenHash && matchesKioskAttemptToken(attemptToken, attempt.attemptTokenHash);
 }
 
-async function persistResult(attemptId: string, result: KioskDecision & { attemptId: string }) {
+async function persistResult(attemptId: string, result: PersistedResult) {
   await KioskAttempt.updateOne(
     { id: attemptId },
     {
@@ -251,13 +262,10 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
 
   const completed = await KioskAttempt.findOne({ id: attemptId, status: { $in: ['granted', 'denied'] } });
   if (completed?.resultPayload) {
-    const cached = JSON.parse(completed.resultPayload) as KioskVerificationResult;
-    // La URL firmada guardada ya habrá caducado: se regenera. El payload
-    // persistido nunca se sirve tal cual en ese campo.
-    const student = cached.student
-      ? await Student.findOne({ id: cached.student.id }).select('photoKey')
-      : null;
-    return { ...cached, studentPhotoUrl: await signStudentPhoto(student?.photoKey) };
+    // El payload guarda la clave, no la URL: se vuelve a firmar aquí. Los
+    // intentos anteriores a este cambio no traen clave y devuelven null.
+    const { studentPhotoKey, ...decision } = JSON.parse(completed.resultPayload) as PersistedResult;
+    return { ...decision, studentPhotoUrl: await signStudentPhoto(studentPhotoKey) };
   }
 
   const attempt = await KioskAttempt.findOneAndUpdate(
@@ -370,9 +378,9 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
       Metrics.accessDenied();
     }
 
-    // La decisión se persiste SIN la URL firmada, que caduca y no debe quedar
-    // guardada; la respuesta la lleva, firmada en este instante.
-    await persistResult(attemptId, { attemptId, ...result });
+    // Se persiste la clave de la foto, nunca la URL firmada; la respuesta sí
+    // la lleva, firmada en este instante.
+    await persistResult(attemptId, { attemptId, ...result, studentPhotoKey });
     const response: KioskVerificationResult = {
       attemptId,
       ...result,
