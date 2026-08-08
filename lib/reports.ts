@@ -43,11 +43,21 @@ function rate(present: number, expected: number): number {
   return Math.round((present / expected) * 100);
 }
 
-/** Agrega el reporte de asistencia de un conjunto de clases. */
-async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
-  const schedules = scheduleIds.length
-    ? await Schedule.find({ id: { $in: scheduleIds } })
-    : await Schedule.find();
+/**
+ * Agrega el reporte de asistencia de un conjunto de clases.
+ *
+ * `null` significa "sin filtro" (el reporte global del administrador) y una
+ * lista vacía significa "ninguna clase". Antes ambos casos se escribían igual,
+ * con `[]`, de modo que un docente sin clases asignadas recibía la asistencia,
+ * los rechazos y los incidentes de todos los docentes, presentados como propios
+ * porque `scope` decía 'docente'.
+ */
+async function buildReport(scheduleIds: string[] | null): Promise<AttendanceReport> {
+  const schedules = scheduleIds === null
+    ? await Schedule.find()
+    : scheduleIds.length === 0
+      ? []
+      : await Schedule.find({ id: { $in: scheduleIds } });
   const ids = schedules.map(s => s.id);
 
   if (ids.length === 0) {
@@ -178,7 +188,9 @@ async function buildReport(scheduleIds: string[]): Promise<AttendanceReport> {
 
 /** Reporte global (admin) o del docente (solo sus clases). */
 export async function getAttendanceReport(teacherId?: string): Promise<AttendanceReport> {
-  let scheduleIds: string[] = [];
+  // Sin docente, sin filtro (null). Con docente, sus clases, aunque sean cero:
+  // una lista vacía debe producir un reporte vacío, no el de la institución.
+  let scheduleIds: string[] | null = null;
   let scope: AttendanceReport['scope'] = 'all';
   if (teacherId) {
     scheduleIds = (await getSchedulesForTeacher(teacherId)).map(s => s.id);
@@ -192,6 +204,8 @@ export async function getAttendanceReport(teacherId?: string): Promise<Attendanc
 /** Reporte de un laboratorio específico (todas las clases del lab). */
 export async function getLabAttendanceReport(labCode: string): Promise<AttendanceReport> {
   const schedules = await getSchedulesForLab(labCode, false);
+  // Siempre lista, nunca null: un laboratorio sin horarios configurados debe dar
+  // un reporte vacío, no el global de todos los laboratorios.
   return buildReport(schedules.map(s => s.id));
 }
 
