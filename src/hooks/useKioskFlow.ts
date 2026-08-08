@@ -36,6 +36,8 @@ export interface KioskFlow {
   statusMessage: string;
   statusHint: string;
   livenessSessionId: string | null;
+  /** Región AWS donde se creó la sesión de liveness (ISS-08). */
+  livenessRegion: string | null;
   kioskAttemptId: string | null;
   activeStage: ScanStageId;
   scanProgress: number;
@@ -127,6 +129,8 @@ export function useKioskFlow(): KioskFlow {
   const [confidence, setConfidence] = useState(0);
   const [scanBlocked, setScanBlocked] = useState(false);
   const [livenessSessionId, setLivenessSessionId] = useState<string | null>(null);
+  // La declara el servidor, nunca el navegador: ver ISS-08.
+  const [livenessRegion, setLivenessRegion] = useState<string | null>(null);
   const [kioskAttemptId, setKioskAttemptId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<ScanStageId>('capture');
   const [scanProgress, setScanProgress] = useState(0);
@@ -277,6 +281,7 @@ export function useKioskFlow(): KioskFlow {
       if (data.ok && data.sessionId && data.attemptId) {
         setKioskAttemptId(data.attemptId);
         setLivenessSessionId(data.sessionId);
+        setLivenessRegion(data.region ?? null);
         send({ type: 'LIVENESS_STARTED' });
         playCue('ready');
       } else {
@@ -377,6 +382,7 @@ export function useKioskFlow(): KioskFlow {
     setConfidence(0);
     setDenialReason(null);
     setLivenessSessionId(null);
+    setLivenessRegion(null);
     setKioskAttemptId(null);
     setScanProgress(0);
     setResetCountdown(0);
@@ -595,6 +601,7 @@ Resultados:
     statusMessage: guidance.message,
     statusHint: guidance.hint,
     livenessSessionId,
+    livenessRegion,
     kioskAttemptId,
     activeStage,
     scanProgress,

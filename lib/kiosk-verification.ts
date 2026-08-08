@@ -155,7 +155,16 @@ export async function createKioskAttempt(requestId?: string) {
   void Metrics.attemptsPerKiosk(kioskId);
   logger.info('kiosk.attempt.created', { requestId, attemptId: id, kioskId, labCode });
 
-  return { attemptId: id, attemptToken, sessionId: liveness.sessionId, expiresAt: expiresAt.toISOString() };
+  // ISS-08: la región viaja junto al sessionId, desde la misma llamada que lo
+  // creó. Así el cliente no puede declarar una distinta de aquella en la que la
+  // sesión existe realmente.
+  return {
+    attemptId: id,
+    attemptToken,
+    sessionId: liveness.sessionId,
+    region: liveness.region,
+    expiresAt: expiresAt.toISOString(),
+  };
 }
 
 export async function assertKioskAttemptForCredentials(attemptId: string, attemptToken: string) {

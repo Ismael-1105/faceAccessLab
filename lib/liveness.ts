@@ -6,10 +6,21 @@ import {
 
 let client: RekognitionClient | null = null;
 
+/**
+ * Región donde se crean y se consultan las sesiones de Face Liveness.
+ *
+ * ISS-08: es la ÚNICA fuente de verdad. El navegador no puede declararla por su
+ * cuenta, porque un sessionId creado aquí y consumido en otra región no existe
+ * para AWS y todas las pruebas de vida fallan sin mensaje claro.
+ */
+export function livenessRegion(): string {
+  return process.env.AWS_REGION || 'us-east-1';
+}
+
 function getClient(): RekognitionClient {
   if (client) return client;
 
-  const region = process.env.AWS_REGION || 'us-east-1';
+  const region = livenessRegion();
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
   const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
@@ -28,6 +39,8 @@ function getClient(): RekognitionClient {
 export interface LivenessSession {
   sessionId: string;
   expiry: number;
+  /** Región en la que se creó la sesión; el cliente debe usar esta misma. */
+  region: string;
 }
 
 export async function createLivenessSession(): Promise<LivenessSession> {
@@ -44,6 +57,7 @@ export async function createLivenessSession(): Promise<LivenessSession> {
   return {
     sessionId: result.SessionId,
     expiry: Date.now() + 120_000,
+    region: livenessRegion(),
   };
 }
 

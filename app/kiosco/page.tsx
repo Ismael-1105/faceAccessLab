@@ -136,6 +136,7 @@ export default function KioscoPage() {
             statusHint={kiosk.statusHint}
             scanBlocked={kiosk.scanBlocked}
             livenessSessionId={kiosk.livenessSessionId}
+            livenessRegion={kiosk.livenessRegion}
             kioskAttemptId={kiosk.kioskAttemptId}
             cameras={kiosk.cameras}
             selectedCamera={kiosk.selectedCamera}

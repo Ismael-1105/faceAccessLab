@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
   return {
     models,
     getLivenessResult: vi.fn(),
+    createLivenessSession: vi.fn(),
     searchFace: vi.fn(),
     matchesToken: vi.fn(),
     uploadImage: vi.fn(),
@@ -39,7 +40,10 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../lib/models.ts', () => mocks.models);
 vi.mock('../../lib/db.ts', () => ({ connectDB: vi.fn().mockResolvedValue({}) }));
-vi.mock('../../lib/liveness.ts', () => ({ createLivenessSession: vi.fn(), getLivenessResult: mocks.getLivenessResult }));
+vi.mock('../../lib/liveness.ts', () => ({
+  createLivenessSession: mocks.createLivenessSession,
+  getLivenessResult: mocks.getLivenessResult,
+}));
 vi.mock('../../lib/rekognition.ts', () => ({ searchFace: mocks.searchFace, ensureCollection: vi.fn() }));
 vi.mock('../../lib/kiosk-attempt-auth.ts', () => ({
   matchesKioskAttemptToken: mocks.matchesToken,
@@ -57,7 +61,7 @@ vi.mock('../../lib/evidence.ts', () => ({
 vi.mock('../../lib/sns.ts', () => ({ publishAlert: mocks.publishAlert }));
 vi.mock('../../lib/cloudwatch.ts', () => ({ Metrics: mocks.metrics }));
 
-import { verifyKioskAttempt } from '../../lib/kiosk-verification.ts';
+import { createKioskAttempt, verifyKioskAttempt } from '../../lib/kiosk-verification.ts';
 
 /** Query simulada con .select que sigue siendo awaitable. */
 function query<T>(value: T) {
@@ -328,5 +332,37 @@ describe('kiosco: foto firmada del alumno (ISS-15)', () => {
     expect(result.allowed).toBe(true);
     expect(result.studentPhotoUrl).toBeNull();
     expect(mocks.getPresignedUrl).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-08: la región del cliente debe salir de donde se creó la sesión, no de un
+// literal en el componente del navegador.
+describe('kiosco: region de la sesion de liveness (ISS-08)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.models.KioskAttempt.create.mockResolvedValue({});
+  });
+
+  it('devuelve la region con la que se creo la sesion', async () => {
+    mocks.createLivenessSession.mockResolvedValue({
+      sessionId: 'ls-1', expiry: Date.now() + 120_000, region: 'us-west-2',
+    });
+
+    const attempt = await createKioskAttempt();
+
+    // La región viaja junto al sessionId, en la misma respuesta.
+    expect(attempt.region).toBe('us-west-2');
+    expect(attempt.sessionId).toBe('ls-1');
+  });
+
+  it('no fuerza us-east-1 cuando el despliegue usa otra region', async () => {
+    mocks.createLivenessSession.mockResolvedValue({
+      sessionId: 'ls-2', expiry: Date.now() + 120_000, region: 'eu-west-1',
+    });
+
+    const attempt = await createKioskAttempt();
+
+    expect(attempt.region).toBe('eu-west-1');
+    expect(attempt.region).not.toBe('us-east-1');
   });
 });

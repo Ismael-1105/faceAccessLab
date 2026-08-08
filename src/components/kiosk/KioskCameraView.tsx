@@ -32,6 +32,8 @@ interface KioskCameraViewProps {
   statusHint: string;
   scanBlocked: boolean;
   livenessSessionId: string | null;
+  /** Región en la que el servidor creó la sesión de liveness (ISS-08). */
+  livenessRegion: string | null;
   kioskAttemptId: string | null;
   cameras: MediaDeviceInfo[];
   selectedCamera: string;
@@ -63,6 +65,7 @@ export default function KioskCameraView({
   statusHint,
   scanBlocked,
   livenessSessionId,
+  livenessRegion,
   kioskAttemptId,
   cameras,
   selectedCamera,
@@ -275,6 +278,7 @@ export default function KioskCameraView({
             <FaceLivenessView
               attemptId={kioskAttemptId}
               sessionId={livenessSessionId}
+              region={livenessRegion}
               onSuccess={onLivenessSuccess}
               onFail={onLivenessFail}
             />
