@@ -3,7 +3,7 @@ import { connectDB } from './db.ts';
 import { createLivenessSession, getLivenessResult } from './liveness.ts';
 import { searchFace } from './rekognition.ts';
 import { canAccessLab, type AuthResult } from './scheduling.ts';
-import { uploadImage } from './s3.ts';
+import { getPresignedUrl, uploadImage } from './s3.ts';
 import { denialEvidencePhotoKey, recordDenialEvidence } from './evidence.ts';
 import { publishAlert } from './sns.ts';
 import { Metrics } from './cloudwatch.ts';
@@ -23,6 +23,12 @@ import {
 
 const ATTEMPT_TTL_MS = 3 * 60 * 1000;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+/**
+ * Vida de la URL firmada de la foto. La pantalla de resultado dura entre 6 y 12
+ * segundos (RESET_MS en useKioskFlow), así que dos minutos cubren de sobra el
+ * caso y dejan margen para una red lenta sin ampliar la exposición.
+ */
+const PHOTO_URL_TTL_SECONDS = 120;
 
 export type KioskDenialReason =
   | 'no-match'
@@ -49,6 +55,37 @@ export interface KioskVerificationResult {
   confidence: number;
   student: { id: string; name: string; career: string; avatarInitials: string } | null;
   schedule: { id: string; subject: string; startTime: string; endTime: string } | null;
+  /**
+   * URL firmada de corta duración para la foto del alumno reconocido, o null si
+   * no tiene foto en S3. El kiosco es un terminal público sin sesión y no puede
+   * usar /api/photos, que exige rol de personal. Se genera en el servidor y se
+   * regenera en cada respuesta: nunca se sirve la que quedó en resultPayload,
+   * que llegaría caducada.
+   */
+  studentPhotoUrl: string | null;
+}
+
+/**
+ * La decisión de acceso, sin los dos campos que añade el transporte. La URL
+ * firmada queda fuera a propósito: se calcula una sola vez al construir la
+ * respuesta, de modo que ninguna de las ocho ramas de decisión pueda olvidarla
+ * ni servir una caducada.
+ */
+type KioskDecision = Omit<KioskVerificationResult, 'attemptId' | 'studentPhotoUrl'>;
+
+/** Firma la foto del alumno para la pantalla de resultado. Nunca lanza. */
+async function signStudentPhoto(photoKey?: string | null): Promise<string | null> {
+  if (!photoKey) return null;
+  try {
+    return await getPresignedUrl(photoKey, PHOTO_URL_TTL_SECONDS);
+  } catch (error) {
+    // Una foto que no se puede firmar no debe tumbar la verificación entera:
+    // el acceso ya está decidido y la pantalla cae al fondo genérico.
+    logger.warn('kiosk.photo.presign.failed', {
+      error: error instanceof Error ? error.message : 'desconocido',
+    });
+    return null;
+  }
 }
 
 function serverKioskConfig() {
@@ -120,7 +157,7 @@ export async function assertKioskAttemptForCredentials(attemptId: string, attemp
   return !!attempt?.attemptTokenHash && matchesKioskAttemptToken(attemptToken, attempt.attemptTokenHash);
 }
 
-async function persistResult(attemptId: string, result: KioskVerificationResult) {
+async function persistResult(attemptId: string, result: KioskDecision & { attemptId: string }) {
   await KioskAttempt.updateOne(
     { id: attemptId },
     {
@@ -140,7 +177,7 @@ async function persistResult(attemptId: string, result: KioskVerificationResult)
 
 async function saveAccess(
   attempt: InstanceType<typeof KioskAttempt>,
-  result: Omit<KioskVerificationResult, 'attemptId'>,
+  result: KioskDecision,
   recognitionMs: number,
 ) {
   const now = new Date();
@@ -167,7 +204,7 @@ async function saveAccess(
 async function saveDeniedEvidence(
   attempt: InstanceType<typeof KioskAttempt>,
   imageBase64: string,
-  result: Omit<KioskVerificationResult, 'attemptId'>,
+  result: KioskDecision,
   now: Date,
   t: { date: string; time: string },
 ) {
@@ -213,7 +250,15 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
   }
 
   const completed = await KioskAttempt.findOne({ id: attemptId, status: { $in: ['granted', 'denied'] } });
-  if (completed?.resultPayload) return JSON.parse(completed.resultPayload) as KioskVerificationResult;
+  if (completed?.resultPayload) {
+    const cached = JSON.parse(completed.resultPayload) as KioskVerificationResult;
+    // La URL firmada guardada ya habrá caducado: se regenera. El payload
+    // persistido nunca se sirve tal cual en ese campo.
+    const student = cached.student
+      ? await Student.findOne({ id: cached.student.id }).select('photoKey')
+      : null;
+    return { ...cached, studentPhotoUrl: await signStudentPhoto(student?.photoKey) };
+  }
 
   const attempt = await KioskAttempt.findOneAndUpdate(
     { id: attemptId, status: { $in: ['pending', 'failed'] }, expiresAt: { $gt: new Date() } },
@@ -239,7 +284,9 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
       ? `data:image/jpeg;base64,${Buffer.from(liveness.referenceImageBytes).toString('base64')}`
       : null;
 
-    let result: Omit<KioskVerificationResult, 'attemptId'>;
+    let result: KioskDecision;
+    // Clave de la foto del alumno identificado, para firmarla al responder.
+    let studentPhotoKey: string | null = null;
     if (liveness.status !== 'SUCCEEDED' || liveness.confidence < LIVENESS_CONFIDENCE_THRESHOLD || !liveness.referenceImageBytes) {
       Metrics.livenessFailed();
       result = { allowed: false, reason: 'liveness-failed', confidence: liveness.confidence, student: null, schedule: null };
@@ -257,6 +304,7 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
         result = { allowed: false, reason: 'no-match', confidence: 0, student: null, schedule: null };
       } else {
         const student = await Student.findOne({ id: match.studentId });
+        studentPhotoKey = student?.photoKey ?? null;
         const safeStudent = student
           ? { id: student.id, name: student.name, career: student.career, avatarInitials: student.avatarInitials }
           : null;
@@ -322,8 +370,14 @@ export async function verifyKioskAttempt(attemptId: string, attemptToken: string
       Metrics.accessDenied();
     }
 
-    const response: KioskVerificationResult = { attemptId, ...result };
-    await persistResult(attemptId, response);
+    // La decisión se persiste SIN la URL firmada, que caduca y no debe quedar
+    // guardada; la respuesta la lleva, firmada en este instante.
+    await persistResult(attemptId, { attemptId, ...result });
+    const response: KioskVerificationResult = {
+      attemptId,
+      ...result,
+      studentPhotoUrl: await signStudentPhoto(studentPhotoKey),
+    };
 
     // Correlación: intento → alumno → kiosco → decisión (sin imágenes ni tokens).
     if (!result.allowed) void Metrics.deniedPerKiosk(attempt.kioskId);

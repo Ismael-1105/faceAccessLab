@@ -168,6 +168,7 @@ export default function KioscoPage() {
             isSuccess={kiosk.isSuccess}
             denialReason={kiosk.denialReason}
             scannedStudent={kiosk.scannedStudent}
+            scannedPhotoUrl={kiosk.scannedPhotoUrl}
             confidence={kiosk.confidence}
             resetCountdown={kiosk.resetCountdown}
             consecutiveDenials={kiosk.consecutiveDenials}

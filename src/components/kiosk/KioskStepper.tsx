@@ -49,6 +49,12 @@ interface KioskStepperProps {
   isSuccess: boolean;
   denialReason: DenialReason | null;
   scannedStudent: Student | null;
+  /**
+   * URL firmada que entrega /api/kiosk/verify (ISS-15). Opcional: el kiosco no
+   * tiene sesión, así que sin ella no hay forma de mostrar una foto de S3 y se
+   * cae al fondo genérico de getPhotoSrc.
+   */
+  scannedPhotoUrl?: string | null;
   confidence: number;
   resetCountdown: number;
   consecutiveDenials: number;
@@ -65,6 +71,7 @@ export default function KioskStepper({
   isSuccess,
   denialReason,
   scannedStudent,
+  scannedPhotoUrl,
   confidence,
   resetCountdown,
   consecutiveDenials,
@@ -184,7 +191,7 @@ export default function KioskStepper({
                 <img
                   className="w-full h-full object-cover"
                   alt={scannedStudent.name}
-                  src={getPhotoSrc(scannedStudent.photoUrl)}
+                  src={scannedPhotoUrl ?? getPhotoSrc(scannedStudent.photoUrl)}
                   onError={(e) => { e.currentTarget.src = '/images/camera-feed-bg.jpg'; }}
                 />
               ) : (

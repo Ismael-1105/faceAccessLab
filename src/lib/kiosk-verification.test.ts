@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     searchFace: vi.fn(),
     matchesToken: vi.fn(),
     uploadImage: vi.fn(),
+    getPresignedUrl: vi.fn(),
     recordDenialEvidence: vi.fn(),
     publishAlert: vi.fn(),
     metrics: {
@@ -44,7 +45,11 @@ vi.mock('../../lib/kiosk-attempt-auth.ts', () => ({
   matchesKioskAttemptToken: mocks.matchesToken,
   createKioskAttemptToken: () => ({ token: 'tok', tokenHash: 'hash' }),
 }));
-vi.mock('../../lib/s3.ts', () => ({ uploadImage: mocks.uploadImage, deleteImage: vi.fn() }));
+vi.mock('../../lib/s3.ts', () => ({
+  uploadImage: mocks.uploadImage,
+  deleteImage: vi.fn(),
+  getPresignedUrl: mocks.getPresignedUrl,
+}));
 vi.mock('../../lib/evidence.ts', () => ({
   recordDenialEvidence: mocks.recordDenialEvidence,
   denialEvidencePhotoKey: () => 'evidence/2026-08-05/kat-1.jpg',
@@ -71,6 +76,7 @@ function makeStudent(overrides: Record<string, unknown> = {}) {
     name: 'Ana',
     career: 'TIC',
     avatarInitials: 'AN',
+    photoKey: 'students/student-1.jpg',
     status: 'allowed',
     matchPercentage: 85,
     biometricStatus: 'registered',
@@ -202,5 +208,86 @@ describe('kiosco: verificación (cadena de decisión)', () => {
     const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
     expect(result.allowed).toBe(false);
     if (!result.allowed) expect(result.reason).toBe('no-biometric');
+  });
+});
+
+// ISS-15: el kiosco no tiene sesión y no puede usar /api/photos, así que la foto
+// del alumno viaja firmada dentro de la respuesta de verificación.
+describe('kiosco: foto firmada del alumno (ISS-15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers().setSystemTime(new Date('2026-08-05T08:30:00'));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('devuelve una URL firmada del photoKey del alumno reconocido', async () => {
+    setupAttempt();
+    mocks.getPresignedUrl.mockResolvedValue('https://s3.example/firmada-1');
+    mocks.getLivenessResult.mockResolvedValue({ status: 'SUCCEEDED', confidence: 90, referenceImageBytes: new Uint8Array([1, 2, 3]) });
+    mocks.searchFace.mockResolvedValue({ studentId: 'student-1', confidence: 92, faceId: 'f1', externalImageId: 'student-1' });
+    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent()));
+
+    const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    expect(result.allowed).toBe(true);
+    expect(result.studentPhotoUrl).toBe('https://s3.example/firmada-1');
+    expect(mocks.getPresignedUrl).toHaveBeenCalledWith('students/student-1.jpg', 120);
+  });
+
+  it('devuelve null si el alumno no tiene foto en S3', async () => {
+    setupAttempt();
+    mocks.getLivenessResult.mockResolvedValue({ status: 'SUCCEEDED', confidence: 90, referenceImageBytes: new Uint8Array([1, 2, 3]) });
+    mocks.searchFace.mockResolvedValue({ studentId: 'student-1', confidence: 92, faceId: 'f1', externalImageId: 'student-1' });
+    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent({ photoKey: undefined })));
+
+    const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    expect(result.studentPhotoUrl).toBeNull();
+    expect(mocks.getPresignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('no tumba la verificación si S3 no puede firmar', async () => {
+    setupAttempt();
+    mocks.getPresignedUrl.mockRejectedValue(new Error('S3 caído'));
+    mocks.getLivenessResult.mockResolvedValue({ status: 'SUCCEEDED', confidence: 90, referenceImageBytes: new Uint8Array([1, 2, 3]) });
+    mocks.searchFace.mockResolvedValue({ studentId: 'student-1', confidence: 92, faceId: 'f1', externalImageId: 'student-1' });
+    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent()));
+
+    const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    // El acceso ya estaba decidido: la foto es accesoria.
+    expect(result.allowed).toBe(true);
+    expect(result.studentPhotoUrl).toBeNull();
+  });
+
+  // El punto que el contrato no contemplaba: resultPayload se reproduce tal cual
+  // cuando el intento ya se consumió, y una URL firmada guardada llega caducada.
+  it('regenera la URL al reproducir un intento ya consumido, sin servir la guardada', async () => {
+    const cachedPayload = JSON.stringify({
+      attemptId: 'kat-1',
+      allowed: true,
+      reason: null,
+      confidence: 92,
+      student: { id: 'student-1', name: 'Ana', career: 'TIC', avatarInitials: 'AN' },
+      schedule: { id: 'sched-1', subject: 'SO', startTime: '08:00', endTime: '10:00' },
+      studentPhotoUrl: 'https://s3.example/CADUCADA',
+    });
+
+    mocks.matchesToken.mockReturnValue(true);
+    mocks.models.KioskAttempt.findOne
+      .mockResolvedValueOnce(query({ attemptTokenHash: 'hash' }))   // autorización
+      .mockResolvedValueOnce(query({ resultPayload: cachedPayload })); // ya consumido
+    mocks.models.Student.findOne.mockResolvedValue(query(makeStudent()));
+    mocks.getPresignedUrl.mockResolvedValue('https://s3.example/firmada-nueva');
+
+    const result = await verifyKioskAttempt('kat-1', 'tok', IMG);
+
+    expect(result.studentPhotoUrl).toBe('https://s3.example/firmada-nueva');
+    expect(result.studentPhotoUrl).not.toBe('https://s3.example/CADUCADA');
+    expect(mocks.getPresignedUrl).toHaveBeenCalledWith('students/student-1.jpg', 120);
+    // El resto del resultado sí se reproduce del payload guardado.
+    expect(result.allowed).toBe(true);
+    expect(result.confidence).toBe(92);
   });
 });

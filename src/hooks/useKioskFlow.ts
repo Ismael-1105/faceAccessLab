@@ -29,6 +29,8 @@ export interface KioskFlow {
   flowState: FlowState;
   cameraDenied: boolean;
   scannedStudent: Student | null;
+  /** URL firmada de la foto del alumno, servida por /api/kiosk/verify (ISS-15). */
+  scannedPhotoUrl: string | null;
   confidence: number;
   scanBlocked: boolean;
   statusMessage: string;
@@ -108,6 +110,9 @@ export function useKioskFlow(): KioskFlow {
   const [stage, dispatch] = useReducer(kioskReducer, INITIAL_STAGE);
   const [cameraDenied, setCameraDenied] = useState(false);
   const [scannedStudent, setScannedStudent] = useState<Student | null>(null);
+  // El kiosco no tiene sesion y no puede usar /api/photos: la foto llega ya
+  // firmada en la respuesta de verificacion.
+  const [scannedPhotoUrl, setScannedPhotoUrl] = useState<string | null>(null);
   const [confidence, setConfidence] = useState(0);
   const [scanBlocked, setScanBlocked] = useState(false);
   const [livenessSessionId, setLivenessSessionId] = useState<string | null>(null);
@@ -318,6 +323,10 @@ export function useKioskFlow(): KioskFlow {
       const finalConfidence = result.confidence || 0;
       goToStage('authorize');
       send({ type: 'PERMISSION_STARTED' });
+      // ISS-15: el servidor firma la foto del alumno reconocido y la manda en
+      // la respuesta. Se fija antes de cerrar el intento para que la pantalla
+      // de resultado ya la tenga en su primer render.
+      setScannedPhotoUrl(result.studentPhotoUrl ?? null);
       if (!result.ok || !result.allowed || !result.student) {
         finishDenied((result.reason || 'network-error') as DenialReason, finalConfidence, result.student || null);
         return;
@@ -345,6 +354,7 @@ export function useKioskFlow(): KioskFlow {
     scanningRef.current = false;
     startingRef.current = false;
     setScannedStudent(null);
+    setScannedPhotoUrl(null);
     setConfidence(0);
     setDenialReason(null);
     setLivenessSessionId(null);
@@ -554,6 +564,7 @@ Resultados:
     flowState,
     cameraDenied,
     scannedStudent,
+    scannedPhotoUrl,
     confidence,
     scanBlocked,
     statusMessage: guidance.message,
