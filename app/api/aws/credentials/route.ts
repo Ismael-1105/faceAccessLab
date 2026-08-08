@@ -5,6 +5,7 @@ import { getKioskAttemptToken } from '@/lib/kiosk-attempt-cookie';
 import { getActor } from '@/lib/rbac';
 import { assertKioskAttemptForCredentials } from '@/lib/kiosk-verification';
 import { sanitizeError } from '@/lib/errors';
+import { logger } from '@/lib/observability';
 
 const DURATION_SECONDS = 3600;
 
@@ -21,13 +22,27 @@ const DURATION_SECONDS = 3600;
  */
 export async function GET(req: Request) {
   const ip = getClientAddress(req);
-  if (!await checkDistributedRateLimit(`sts:${ip}`, RATE_LIMITS.sts)) {
+  const attemptId = req.headers.get('x-kiosk-attempt') || new URL(req.url).searchParams.get('attemptId');
+
+  // ISS-12: sin un proxy inverso delante no existen x-forwarded-for ni
+  // x-real-ip, así que getClientAddress devuelve 'unknown' y TODOS los clientes
+  // compartían el mismo cubo. Con seis credenciales por minuto para la sala
+  // entera, unos pocos reintentos durante la demostración agotaban el cupo y el
+  // kiosco respondía "Demasiadas solicitudes" sin que hubiera abuso alguno.
+  //
+  // El identificador del intento reparte el cupo por terminal. El cupo NO se
+  // sube: son credenciales de AWS entregadas al navegador, un flujo de liveness
+  // legítimo necesita una o dos, y /api/kiosk/attempt ya limita a 10 por minuto
+  // la puerta anterior. Cambiar la clave y ampliar el cupo a la vez sería
+  // doblemente permisivo.
+  const rateKey = `sts:${ip}:${attemptId ?? 'session'}`;
+  if (!await checkDistributedRateLimit(rateKey, RATE_LIMITS.sts)) {
+    logger.warn('ratelimit.exceeded', { endpoint: 'aws/credentials', key: rateKey });
     return new Response(JSON.stringify({ ok: false, error: 'Demasiadas solicitudes. Espera un minuto.' }), {
       status: 429, headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  const attemptId = req.headers.get('x-kiosk-attempt') || new URL(req.url).searchParams.get('attemptId');
   const attemptToken = getKioskAttemptToken(req);
   const actor = getActor(req);
 
