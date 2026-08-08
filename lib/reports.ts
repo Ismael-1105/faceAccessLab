@@ -107,19 +107,26 @@ async function buildReport(scheduleIds: string[] | null): Promise<AttendanceRepo
   const byClass: ReportRow[] = schedules.map(s => {
     const enrolled = enrollments.filter(e => e.scheduleId === s.id);
     const classAtt = attendances.filter(a => a.scheduleId === s.id);
+    // `present` cuenta registros acumulados de todas las fechas, mientras que
+    // los inscritos son el aforo de UNA sesión. Mezclarlos daba porcentajes por
+    // encima de 100 (4 inscritos y 3 sesiones completas mostraban 300 por
+    // ciento) y hacía que present + absent no sumara expected. Se normaliza por
+    // número de sesiones registradas para que las tres cifras hablen la misma
+    // unidad, que es la que ya usa el bloque byStudent.
+    const sessions = new Set(classAtt.map(a => a.date)).size || 1;
     const present = classAtt.filter(a => a.status === 'presente').length;
-    const presentStudents = new Set(classAtt.filter(a => a.status === 'presente').map(a => a.studentId));
-    const absent = Math.max(0, enrolled.length - presentStudents.size);
+    const expectedTotal = enrolled.length * sessions;
+    const absent = Math.max(0, expectedTotal - present);
     return {
       scheduleId: s.id,
       subject: s.subject,
       labCode: s.labCode,
       teacherId: s.teacherId,
       teacherName: teacherName(s.teacherId),
-      expected: enrolled.length,
+      expected: expectedTotal,
       present,
       absent,
-      attendanceRate: rate(present, enrolled.length),
+      attendanceRate: rate(present, expectedTotal),
     };
   });
 
