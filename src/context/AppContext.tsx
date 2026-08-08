@@ -124,6 +124,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSessionReady(true);
   }, []);
 
+  /**
+   * ISS-22: refresco proactivo, dos minutos antes de que expire el access token.
+   *
+   * Evita que la cookie de acceso llegue a caducar mientras haya una pestaña
+   * abierta, de modo que abrir el panel en otra pestaña no acabe en la página de
+   * renovación. Es complementario, no sustituto: si no hay ninguna pestaña viva,
+   * la renovación la resuelve `proxy.ts` mandando a /renovando.
+   */
+  useEffect(() => {
+    if (!user) return;
+
+    const token = getToken();
+    if (!token) return;
+
+    let expMs: number;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (typeof payload.exp !== 'number') return;
+      expMs = payload.exp * 1000;
+    } catch {
+      return;
+    }
+
+    const LEAD_MS = 2 * 60 * 1000;
+    // Nunca negativo: si ya queda menos del margen, se renueva enseguida.
+    const delay = Math.max(0, expMs - Date.now() - LEAD_MS);
+    const id = setTimeout(() => { void attemptRefresh(); }, delay);
+    return () => clearTimeout(id);
+  }, [user]);
+
   useEffect(() => {
     if (user && (user.role === 'docente' || user.role === 'admin')) {
       Promise.all([

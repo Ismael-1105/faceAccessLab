@@ -18,6 +18,29 @@ import { NextResponse, type NextRequest } from 'next/server';
 const STAFF_PATHS = ['/docente', '/diagnostico'];
 // Rutas públicas (kiosco y home).
 const PUBLIC_PATHS = ['/kiosco', '/login', '/recuperar', '/'];
+/**
+ * Página de renovación de sesión (ISS-22). Deliberadamente FUERA de STAFF_PATHS:
+ * si exigiera sesión, el middleware la redirigiría a sí misma y el navegador
+ * entraría en un bucle de redirecciones, que se manifiesta como una pestaña
+ * parpadeando hasta que el navegador corta.
+ */
+const RENEW_PATH = '/renovando';
+
+/**
+ * Solo se admite como destino una ruta interna. Sin esto, `next` sería un
+ * redirector abierto en una ruta de autenticación: `//evil.com` lo interpreta el
+ * navegador como protocolo relativo y sale del dominio.
+ *
+ * Se exporta para poder probarla de forma directa. Al llamarla desde `proxy` el
+ * pathname ya viene normalizado por el parseo de URL, de modo que a través del
+ * middleware la rama de rechazo es inalcanzable y una prueba que pasara por ahí
+ * pasaría en vacío.
+ */
+export function safeNext(pathname: string, search: string): string {
+  const target = `${pathname}${search}`;
+  if (!target.startsWith('/') || target.startsWith('//')) return '/docente';
+  return target;
+}
 
 const encoder = new TextEncoder();
 
@@ -76,6 +99,21 @@ export async function proxy(req: NextRequest) {
   // Rutas de staff (docente/admin): exigen sesión y rol correcto.
   if (STAFF_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
     if (!isLogged) {
+      // ISS-22: la cookie de acceso vive 15 minutos y la de refresco 7 días. Si
+      // la primera caducó pero la segunda sigue ahí, la sesión es renovable y
+      // expulsar al login es incorrecto: pasa al abrir el panel en una pestaña
+      // nueva tras un rato en el kiosco, y obliga a autenticarse otra vez
+      // delante del tribunal.
+      //
+      // La renovación NO puede hacerla el middleware: authService.refresh exige
+      // CSRF por cabecera (isCsrfValid) y una redirección es una navegación, que
+      // no puede enviar cabeceras. Por eso se delega en una página cliente, que
+      // sí hace fetch y sí puede adjuntar X-CSRF-Token.
+      if (req.cookies.get('refresh_token')?.value) {
+        const url = new URL(RENEW_PATH, req.url);
+        url.searchParams.set('next', safeNext(pathname, req.nextUrl.search));
+        return NextResponse.redirect(url);
+      }
       return NextResponse.redirect(new URL('/login', req.url));
     }
     if (role !== 'admin' && role !== 'docente') {
