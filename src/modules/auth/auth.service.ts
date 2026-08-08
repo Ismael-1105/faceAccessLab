@@ -56,8 +56,15 @@ export async function login(req: Request, input: LoginInput): Promise<AuthResult
   if (!validPassword) return { status: 401, body: { error: 'Credenciales inválidas' } };
 
   if (user.mfaEnabled) {
-    if (!input.mfaToken || !user.mfaSecret || !verifyTotp(user.mfaSecret, input.mfaToken)) {
+    // Los dos casos son distintos y deben responder distinto. Devolver
+    // mfaRequired también para un código incorrecto hacía que la vista lo
+    // interpretara como "hay que pedir el código", borrara el error y no
+    // mostrara nada: la pantalla parecía congelada.
+    if (!input.mfaToken) {
       return { status: 200, body: { mfaRequired: true, user: toDTO(user) } };
+    }
+    if (!user.mfaSecret || !verifyTotp(user.mfaSecret, input.mfaToken)) {
+      return { status: 401, body: { error: 'Código de verificación incorrecto o caducado' } };
     }
   }
 

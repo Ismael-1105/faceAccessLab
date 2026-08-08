@@ -80,6 +80,7 @@ import { handleRegisterBiometric } from '../lib/handlers.ts';
 import { verifyKioskAttempt } from '../lib/kiosk-verification.ts';
 import { handleExportAttendanceReport } from '../lib/handlers.ts';
 import { hashPassword, generateToken } from '../lib/auth.ts';
+import { generateSecret, generateTotp } from '../lib/totp.ts';
 
 function authed(role: 'admin' | 'docente', userId = 'u1') {
   const token = generateToken({ userId, email: 'e@x.com', role });
@@ -147,6 +148,57 @@ describe('login (integración)', () => {
     const res = await handleLogin(jsonReq('http://localhost/x', { email: 'no-email' }));
     expect(res.status).toBe(400);
     expect(mocks.models.User.findOne).not.toHaveBeenCalled();
+  });
+
+  // ISS-16: faltar el código y equivocarse no son el mismo caso, y devolvían la
+  // misma respuesta. La vista trataba ambos como "pide el código", borraba el
+  // error y no mostraba nada. Se usa el TOTP real, no un doble.
+  describe('MFA', () => {
+    const mfaSecret = generateSecret();
+
+    function mfaUser() {
+      return {
+        _id: 'u1', email: 'a@x.com', name: 'Ana', role: 'docente',
+        passwordHash, mfaEnabled: true, mfaSecret, status: 'active',
+      };
+    }
+
+    it('pide el código cuando la cuenta tiene MFA y no se envió ninguno', async () => {
+      mocks.models.User.findOne.mockResolvedValue(mfaUser());
+      const res = await handleLogin(jsonReq('http://localhost/x', { email: 'a@x.com', password: 'correcta' }));
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.mfaRequired).toBe(true);
+      expect(body.token).toBeUndefined();
+      expect(mocks.createSession).not.toHaveBeenCalled();
+    });
+
+    it('devuelve 401 con mensaje propio cuando el código es incorrecto', async () => {
+      mocks.models.User.findOne.mockResolvedValue(mfaUser());
+      const res = await handleLogin(jsonReq('http://localhost/x', {
+        email: 'a@x.com', password: 'correcta', mfaToken: '000000',
+      }));
+
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toBe('Código de verificación incorrecto o caducado');
+      // Lo que rompía la pantalla: un código incorrecto ya NO responde mfaRequired.
+      expect(body.mfaRequired).toBeUndefined();
+      expect(mocks.createSession).not.toHaveBeenCalled();
+    });
+
+    it('autentica cuando el código es correcto', async () => {
+      mocks.models.User.findOne.mockResolvedValue(mfaUser());
+      const res = await handleLogin(jsonReq('http://localhost/x', {
+        email: 'a@x.com', password: 'correcta', mfaToken: generateTotp(mfaSecret),
+      }));
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.token).toBeTruthy();
+      expect(mocks.createSession).toHaveBeenCalled();
+    });
   });
 });
 
