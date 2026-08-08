@@ -85,8 +85,19 @@ const PROGRESS_TICK_MS = 100;
 const RESET_MS = { granted: 6000, denied: 12000 } as const;
 const CAMERA_MAX_ATTEMPTS = 5;
 const CAMERA_RETRY_DELAY_MS = 1000;
-/** Tiempo máximo por intento antes de cancelación automática (Fase 7). */
-const ATTEMPT_TIMEOUT_MS = 15000;
+/**
+ * Tiempo máximo de la fase de comparación antes de cancelación automática.
+ *
+ * ISS-07: NO cubre la prueba de vida. Ese desafío exige cargar
+ * FaceLivenessDetectorCore, pedir credenciales a STS, abrir el canal de
+ * streaming con AWS y que la persona complete los movimientos; en un equipo
+ * lento, con proyector o con la red del campus, eso supera 15 segundos con
+ * facilidad, y el intento se cancelaba en mitad del desafío una y otra vez.
+ * El reloj arranca al empezar la comparación, que sí debe resolverse rápido.
+ */
+const ATTEMPT_TIMEOUT_MS = 45000;
+/** Solo se muestra el segundero cuando queda poco, para no distraer. */
+const ATTEMPT_COUNTDOWN_VISIBLE_S = 10;
 const HEALTH_PING_MS = 15000;
 
 function isTransientCameraError(err: unknown): boolean {
@@ -259,7 +270,6 @@ export function useKioskFlow(): KioskFlow {
     if (startingRef.current || scanningRef.current) return;
     startingRef.current = true;
     goToStage('liveness');
-    attemptStartRef.current = Date.now();
 
     try {
       const res = await fetch('/api/kiosk/attempt', { method: 'POST' });
@@ -300,6 +310,8 @@ export function useKioskFlow(): KioskFlow {
   const performScan = useCallback(async (frameArg?: string) => {
     if (scanningRef.current) return;
     scanningRef.current = true;
+    // ISS-07: el reloj del intento empieza aquí, no en la prueba de vida.
+    attemptStartRef.current = Date.now();
     send({ type: 'MATCHING_STARTED' });
     goToStage('capture');
     setScanProgress(0);
@@ -441,16 +453,22 @@ export function useKioskFlow(): KioskFlow {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Tiempo máximo por intento: cancelación automática (Fase 7).
+  // Tiempo máximo de la comparación: cancelación automática (Fase 7).
+  // ISS-07: 'liveness' queda fuera a propósito; ver ATTEMPT_TIMEOUT_MS.
   useEffect(() => {
-    if (flowState !== 'liveness' && flowState !== 'scanning') {
+    if (flowState !== 'scanning') {
       setAttemptCountdown(0);
       return;
     }
     const elapsed = () => Math.max(0, ATTEMPT_TIMEOUT_MS - (Date.now() - attemptStartRef.current)) / 1000;
-    setAttemptCountdown(Math.ceil(elapsed()));
+    // 0 significa "no mostrar": el consumidor solo pinta si es mayor que 0.
+    const visible = () => {
+      const s = Math.ceil(elapsed());
+      return s <= ATTEMPT_COUNTDOWN_VISIBLE_S ? s : 0;
+    };
+    setAttemptCountdown(visible());
     const id = setInterval(() => {
-      setAttemptCountdown(Math.ceil(elapsed()));
+      setAttemptCountdown(visible());
       if (Date.now() - attemptStartRef.current >= ATTEMPT_TIMEOUT_MS) {
         clearInterval(id);
         scanningRef.current = false;
