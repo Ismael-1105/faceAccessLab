@@ -93,7 +93,12 @@ export type UserRole = 'admin' | 'docente' | 'estudiante';
 export interface AuthUser {
   id: string;
   email: string;
-  password: string;
+  /**
+   * ISS-13: opcional y siempre vacío. Ninguna contraseña debe viajar al
+   * navegador. Se conserva el campo, y no se elimina, porque los tres sitios
+   * que construyen un AuthUser tras el login ya asignan cadena vacía.
+   */
+  password?: string;
   name: string;
   role: UserRole;
   studentId?: string;

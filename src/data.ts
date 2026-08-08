@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Student, AccessLog, CloudService, AuthUser } from './types.ts';
+import { Student, AccessLog, CloudService } from './types.ts';
 
 export const INITIAL_STUDENTS: Student[] = [
   {
@@ -199,53 +199,4 @@ export const CLOUD_SERVICES: CloudService[] = [
     actionLabel: 'Monitoreo de Salud',
     status: 'operational'
   }
-];
-
-export const MOCK_AUTH_USERS: AuthUser[] = [
-  {
-    id: 'doc-1',
-    email: 'docente@faceaccess.lab',
-    password: 'docente123',
-    name: 'Dr. Ismael González',
-    role: 'docente',
-  },
-  {
-    id: 'doc-2',
-    email: 'admin@faceaccess.lab',
-    password: 'admin123',
-    name: 'Ing. Alejandro Morales',
-    role: 'admin',
-  },
-  {
-    id: 'stu-1',
-    email: 'ismael@faceaccess.lab',
-    password: 'estudiante123',
-    name: 'Ismael González',
-    role: 'estudiante',
-    studentId: 'student-ismael',
-  },
-  {
-    id: 'stu-2',
-    email: 'alejandro@faceaccess.lab',
-    password: 'estudiante123',
-    name: 'Alejandro Morales',
-    role: 'estudiante',
-    studentId: 'student-alejandro',
-  },
-  {
-    id: 'stu-3',
-    email: 'sofia@faceaccess.lab',
-    password: 'estudiante123',
-    name: 'Sofia Villarreal',
-    role: 'estudiante',
-    studentId: 'student-sofia',
-  },
-  {
-    id: 'stu-4',
-    email: 'julian@faceaccess.lab',
-    password: 'estudiante123',
-    name: 'Julian Rivas',
-    role: 'estudiante',
-    studentId: 'student-julian',
-  },
 ];
