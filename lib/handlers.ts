@@ -17,7 +17,7 @@ import {
   academicTermCreateSchema,
 } from './validation.ts';
 import { recordAudit, getAuditLogsPage, getClientIp, getUserAgent } from './audit.ts';
-import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow } from './scheduling.ts';
+import { newScheduleId, newEnrollmentId, getSchedulesForTeacher, getSchedulesForLab, getExistingStudentIds, isClassNow, isSessionActive } from './scheduling.ts';
 import { getAttendanceReport, getLabDashboard } from './reports.ts';
 import { recordDenialEvidence } from './evidence.ts';
 import { getPresignedUrl } from './s3.ts';
@@ -1217,7 +1217,18 @@ export async function handleUpdateSchedule(req: Request): Promise<Response> {
     return errorResponse('Una clase cancelada no puede modificarse', 400);
   }
 
-  const updated = await Schedule.findOneAndUpdate({ id }, { $set: updates }, { new: true });
+  // ISS-05: sella cuándo empezó la sesión. Va en el $set y no en `updates`
+  // porque scheduleUpdateSchema es .strict(): sessionStartedAt lo escribe el
+  // servidor y nunca puede llegar por el cuerpo de la petición, o cualquiera
+  // podría antedatar su sesión y saltarse la ventana máxima.
+  const updated = await Schedule.findOneAndUpdate(
+    { id },
+    { $set: {
+      ...updates,
+      ...(updates.status === 'en_curso' ? { sessionStartedAt: new Date() } : {}),
+    } },
+    { new: true },
+  );
   if (!updated) return errorResponse('Clase no encontrada', 404);
 
   // F10: al finalizar la clase, marcar ausentes a los que no registraron asistencia.
@@ -1623,15 +1634,18 @@ export async function handleGetKioskSession(req: Request): Promise<Response> {
   const labCode = process.env.KIOSK_LAB || process.env.NEXT_PUBLIC_KIOSK_LAB || 'LAB-02';
   if (!labCode) return jsonResponse({ session: null });
 
-    const day = new Date().getDay();
-    const now = new Date();
-    const schedules = await getSchedulesForLab(labCode, true).then(list =>
-      list.filter(s => s.dayOfWeek === day && isClassNow(s, now) && s.activeKiosk !== false)
-    );
+  // ISS-05: la cabecera usa la MISMA definición de sesión vigente que
+  // canAccessLab. Si divergen, el kiosco anuncia una clase en curso que luego
+  // rechaza cada escaneo, y se contradice delante del estudiante.
+  const now = new Date();
+  const schedules = await getSchedulesForLab(labCode, true).then(list =>
+    list.filter(s => s.activeKiosk !== false && isSessionActive(s, now))
+  );
 
   if (schedules.length === 0) return jsonResponse({ session: null });
 
-  const schedule = schedules[0];
+  // Varias sesiones vigentes a la vez: desempata la que cae en su franja.
+  const schedule = schedules.find(s => isClassNow(s, now)) ?? schedules[0];
   const teacher = schedule.teacherId ? await User.findById(schedule.teacherId) : null;
 
   return jsonResponse({

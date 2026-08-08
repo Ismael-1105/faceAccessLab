@@ -122,6 +122,12 @@ export interface ISchedule extends Document {
   active: boolean;
   /** Estado de sesión: el docente lo inicia/finaliza desde su panel. */
   status: 'programada' | 'en_curso' | 'finalizada' | 'cancelada';
+  /**
+   * Momento en que la sesión pasó a "en_curso". Lo escribe el servidor, nunca
+   * el cliente: acota cuánto tiempo puede seguir autorizando una clase que
+   * nadie finalizó (ver isSessionActive en lib/scheduling.ts).
+   */
+  sessionStartedAt?: Date;
   /** Paralelo del curso (A, B, ...) dentro del horario oficial. */
   parallel?: string;
   /** Campus donde se imparte la clase (UIO, GYE, ...). */
@@ -385,6 +391,7 @@ const ScheduleSchema = new Schema<ISchedule>({
   endTime: { type: String, required: true },
   active: { type: Boolean, default: true },
   status: { type: String, enum: ['programada', 'en_curso', 'finalizada', 'cancelada'], default: 'programada' },
+  sessionStartedAt: { type: Date },
   parallel: { type: String },
   campus: { type: String },
   academicTerm: { type: String },

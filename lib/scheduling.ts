@@ -13,6 +13,8 @@ export interface ScheduleView {
   active: boolean;
   /** Estado de sesión; puede faltar en clases creadas antes del campo (legacy). */
   status?: 'programada' | 'en_curso' | 'finalizada' | 'cancelada';
+  /** Momento en que la sesión se inició; falta en clases anteriores al campo. */
+  sessionStartedAt?: Date;
   parallel?: string;
   campus?: string;
   academicTerm?: string;
@@ -33,6 +35,7 @@ function toScheduleView(s: InstanceType<typeof Schedule>): ScheduleView {
     endTime: s.endTime,
     active: s.active,
     status: s.status,
+    sessionStartedAt: s.sessionStartedAt,
     parallel: s.parallel,
     campus: s.campus,
     academicTerm: s.academicTerm,
@@ -80,6 +83,34 @@ export function isClassNow(schedule: { startTime: string; endTime: string }, now
   return mins >= toMinutes(schedule.startTime) && mins <= toMinutes(schedule.endTime);
 }
 
+/** Horas que una sesión sin finalizar sigue siendo válida. Configurable. */
+function sessionMaxMs(): number {
+  const raw = Number(process.env.SESSION_MAX_HOURS);
+  const hours = Number.isFinite(raw) && raw > 0 ? raw : 12;
+  return hours * 3600_000;
+}
+
+/**
+ * Definición única de "sesión vigente", compartida por `canAccessLab` y por la
+ * cabecera del kiosco (`handleGetKioskSession`). Deben coincidir siempre: si el
+ * terminal anuncia una clase en curso que la autorización luego rechaza, el
+ * kiosco se contradice a sí mismo delante del estudiante.
+ *
+ * Ni el día de la semana ni la franja horaria intervienen: el docente puede
+ * iniciar la clase cuando la necesite (ISS-01/ISS-05). Lo que sí acota es la
+ * marca de inicio, para que una clase que nadie finalizó deje de autorizar en
+ * lugar de quedar abierta indefinidamente. Sin marca (clases anteriores al
+ * campo) se considera no vigente, que es el lado seguro.
+ */
+export function isSessionActive(
+  schedule: { status?: string; sessionStartedAt?: Date },
+  now = new Date(),
+): boolean {
+  if (schedule.status !== 'en_curso') return false;
+  if (!schedule.sessionStartedAt) return false;
+  return now.getTime() - schedule.sessionStartedAt.getTime() < sessionMaxMs();
+}
+
 /**
  * Razón exacta de la autorización. Permite que el kiosco muestre el motivo
  * específico de denegación (clase no iniciada, finalizada, laboratorio
@@ -90,54 +121,59 @@ export type AuthResult =
   | { allowed: false; schedule: ScheduleView | null; reason: 'no-class' | 'not-enrolled' | 'class-not-started' | 'class-ended' | 'class-cancelled' | 'wrong-lab' | 'virtual' | 'no-biometric' | 'consent-expired' };
 
 /**
- * Autorización por planificación + estado de sesión:
- * - Debe existir una clase activa hoy en `labCode`.
+ * Autorización por estado de sesión:
+ * - Debe existir una clase activa en `labCode` con sesión vigente, es decir
+ *   iniciada por el docente y dentro de la ventana máxima (isSessionActive).
+ *   Ni el día de la semana ni la franja horaria condicionan la autorización:
+ *   una clase puede empezar tarde, adelantarse o recuperarse en otro horario.
  * - La materia debe ser presencial y habilitada para el kiosco.
  * - El estudiante debe estar inscrito en esa clase y con biometría registrada.
- * - La clase debe estar "en curso" (el docente la inició desde su panel).
  *
  * Devuelve el motivo concreto para que el kiosco lo presente al estudiante.
- * Todos los Schedule se normalizan con `status` (backfill en `lib/db.ts`);
- * solo `en_curso` habilita el acceso.
+ * Todos los Schedule se normalizan con `status` (backfill en `lib/db.ts`).
  */
 export async function canAccessLab(
   studentId: string,
   labCode: string,
   now = new Date()
 ): Promise<AuthResult> {
-  const day = now.getDay();
-  const schedules = await getSchedulesForLab(labCode, true).then(list =>
-    list.filter(s => s.dayOfWeek === day && s.activeKiosk !== false)
+  // Sin filtro por dayOfWeek: el estado de sesión gobierna, no el calendario.
+  const candidates = await getSchedulesForLab(labCode, true).then(list =>
+    list.filter(s => s.activeKiosk !== false)
   );
 
-  if (schedules.length === 0) {
+  if (candidates.length === 0) {
     return { allowed: false, schedule: null, reason: 'no-class' };
   }
 
-  const inSession = schedules.find(s => isClassNow(s, now));
+  const byStart = (a: ScheduleView, b: ScheduleView) =>
+    toMinutes(a.startTime) - toMinutes(b.startTime);
+
+  // Una clase en curso autoriza aunque sea otro día y fuera de su franja.
+  // isClassNow ya solo desempata entre varias sesiones simultáneas.
+  const running = candidates.filter(s => isSessionActive(s, now));
+  const inSession = running.length
+    ? (running.find(s => isClassNow(s, now)) ?? running.slice().sort(byStart)[0])
+    : null;
+
   if (!inSession) {
-    // Hay clase hoy pero fuera de su ventana horaria.
-    const earliest = schedules.sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime))[0];
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const reason = nowMin < toMinutes(earliest.startTime) ? 'class-not-started' : 'class-ended';
-    return { allowed: false, schedule: earliest, reason };
+    // Ninguna sesión vigente. El motivo sale del estado de la clase más
+    // representativa, priorizando las de hoy para que el mensaje sea útil.
+    const today = candidates.filter(s => s.dayOfWeek === now.getDay());
+    const reference = (today.length ? today : candidates).slice().sort(byStart)[0];
+    const reason = reference.status === 'cancelada'
+      ? 'class-cancelled'
+      // "en_curso" aquí significa sesión caducada por no haberse finalizado:
+      // para quien está frente al kiosco, eso es una clase terminada.
+      : reference.status === 'finalizada' || reference.status === 'en_curso'
+        ? 'class-ended'
+        : 'class-not-started';
+    return { allowed: false, schedule: reference, reason };
   }
 
   // Las materias virtuales no generan autorizaciones por el kiosco.
   if (inSession.deliveryMode === 'virtual' || inSession.requiresPhysicalAccess === false) {
     return { allowed: false, schedule: inSession, reason: 'virtual' };
-  }
-
-  // El estado de sesión gobierna la asistencia: solo "en_curso" habilita.
-  if (inSession.status === 'finalizada') {
-    return { allowed: false, schedule: inSession, reason: 'class-ended' };
-  }
-  if (inSession.status === 'cancelada') {
-    return { allowed: false, schedule: inSession, reason: 'class-cancelled' };
-  }
-  if (inSession.status !== 'en_curso') {
-    // "programada" (o status ausente, normalizado por backfill): no autoriza.
-    return { allowed: false, schedule: inSession, reason: 'class-not-started' };
   }
 
   const enrollments = await Enrollment.find({

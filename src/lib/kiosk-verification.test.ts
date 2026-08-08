@@ -85,7 +85,11 @@ function makeSchedule() {
   return {
     id: 'sched-1', subject: 'SO', teacherId: 't1', labCode: 'LAB-02',
     dayOfWeek: 3, startTime: '08:00', endTime: '10:00',
-    active: true, status: 'en_curso', deliveryMode: 'presencial',
+    active: true, status: 'en_curso',
+    // ISS-05: una sesión en curso solo es vigente si lleva marca de inicio
+    // dentro de la ventana máxima. El reloj del describe está en 08:30.
+    sessionStartedAt: new Date('2026-08-05T08:00:00'),
+    deliveryMode: 'presencial',
     requiresPhysicalAccess: true, activeKiosk: true, createdAt: new Date('2026-01-01'),
   };
 }
