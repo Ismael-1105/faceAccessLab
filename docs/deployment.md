@@ -45,6 +45,26 @@ output: 'standalone'   // build autocontenido, listo para contenedores/serverles
 
 El build copia los archivos WASM a `public/mediapipe/` automáticamente (`scripts/copy-mediapipe-wasm.mjs`, disparado por `prebuild`/`predev`). Esos archivos están en `.gitignore` y se regeneran en cada build, así que no hay que commitearlos.
 
+### Copia obligatoria de `public/` con `output: 'standalone'` (ISS-21)
+
+**La salida de `standalone` no incluye el directorio `public/`.** Generarlo en el build no basta: hay que copiarlo de forma explícita a la imagen o al servidor de destino, junto a `.next/static`.
+
+```dockerfile
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+```
+
+Si esa última línea falta, los cuatro archivos WASM (unos 22 MB) no llegan a producción y **el fallo es silencioso**: `FilesetResolver` no consigue cargar el runtime, el estado del encuadre pasa a `unsupported` y el disparo automático al detectar el rostro deja de producirse. El kiosco no muestra ningún error, solo el aviso "Detección automática no disponible. Pulsa Iniciar verificación" en la franja inferior del vídeo.
+
+El flujo sigue siendo completable con el botón manual, así que el impacto funcional es limitado, pero se pierde la parte más vistosa de la demostración y quien presenta puede quedarse esperando frente a la cámara sin entender por qué no ocurre nada.
+
+**Comprobación antes de presentar.** La pantalla `/diagnostico` incluye la fila "Runtime MediaPipe", que hace una petición `HEAD` a `/mediapipe/wasm/vision_wasm_internal.wasm`. Si aparece "Ausente: sin disparo automático", el directorio `public/` no se copió. También se puede comprobar a mano:
+
+```bash
+curl -I https://<host>/mediapipe/wasm/vision_wasm_internal.wasm   # debe dar 200
+```
+
 ## Tareas manuales (una vez por ambiente)
 
 ```bash

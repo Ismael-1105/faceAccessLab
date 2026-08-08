@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Fingerprint, Camera as CameraIcon, Maximize2, Minimize2, Volume2, VolumeX,
-  Wifi, WifiOff, Sun, SunDim,
+  Wifi, WifiOff, Sun, SunDim, ScanFace,
 } from 'lucide-react';
 import { useKioskFlow } from '@/src/hooks/useKioskFlow';
 import KioskCameraView from '@/src/components/kiosk/KioskCameraView';
@@ -107,6 +107,17 @@ export default function KioscoPage() {
         <StatusPill ok={kiosk.cameraReady} label="Cámara" Icon={CameraIcon} aria="Estado de la cámara" />
         <StatusPill ok={connected} label={connected ? 'En línea' : 'Sin conexión'} Icon={connected ? Wifi : WifiOff} aria="Conectividad" />
         <StatusPill ok={lightingOk} label="Iluminación" Icon={lightingOk ? Sun : SunDim} aria="Comprobación de iluminación" />
+        {/* ISS-21: el runtime ausente solo se avisaba con un texto en la franja
+            inferior del vídeo. Al nivel del resto de comprobaciones se ve antes
+            de empezar, que es cuando todavía se puede hacer algo al respecto. */}
+        {kiosk.framing.status === 'unsupported' && (
+          <StatusPill
+            ok={false}
+            label="Detección automática"
+            Icon={ScanFace}
+            aria="Detección automática de rostro no disponible: usa el botón Iniciar verificación"
+          />
+        )}
         {kiosk.attemptCountdown > 0 && (
           <span
             role="timer"

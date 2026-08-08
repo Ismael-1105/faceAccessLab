@@ -16,6 +16,8 @@ export default function DiagnosticoPage() {
   const [cameraOk, setCameraOk] = useState(false);
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [error, setError] = useState('');
+  // ISS-21: 'checking' hasta saber, para no anunciar un fallo que aun no consta.
+  const [wasmOk, setWasmOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +33,14 @@ export default function DiagnosticoPage() {
       .then(r => r.json())
       .then((d: { session: SessionInfo | null }) => { if (!cancelled) setSession(d.session); })
       .catch(() => {});
+
+    // ISS-21: con output: 'standalone' el directorio public/ NO se incluye en la
+    // salida del build. Si no se copia a mano, faltan los binarios de MediaPipe y
+    // el disparo automatico del kiosco deja de funcionar en silencio. Aqui se
+    // comprueba de forma explicita, antes de empezar y no en mitad del flujo.
+    fetch('/mediapipe/wasm/vision_wasm_internal.wasm', { method: 'HEAD' })
+      .then(r => { if (!cancelled) setWasmOk(r.ok); })
+      .catch(() => { if (!cancelled) setWasmOk(false); });
 
     if (navigator.mediaDevices?.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ video: true })
@@ -58,6 +68,15 @@ export default function DiagnosticoPage() {
     { label: 'AWS', ok: Boolean(health?.aws?.configured), value: health?.aws?.configured ? 'Configurado' : 'No configurado' },
     { label: 'Cámara', ok: cameraOk, value: cameraOk ? 'Disponible' : 'No accesible' },
     { label: 'Red', ok: online, value: online ? 'En línea' : 'Sin conexión' },
+    {
+      label: 'Runtime MediaPipe',
+      ok: wasmOk === true,
+      value: wasmOk === null
+        ? 'Comprobando...'
+        : wasmOk
+          ? 'Disponible'
+          : 'Ausente: sin disparo automático',
+    },
     { label: 'Cola local', ok: queue === 0, value: `${queue} evento(s)` },
   ];
 
