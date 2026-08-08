@@ -330,7 +330,7 @@ export default function SchedulesView() {
                       <XCircle className="w-3.5 h-3.5" weight="fill" /> Cancelar
                     </button>
                   )}
-                  {isTeacher && status !== 'cancelada' && (
+                  {status !== 'cancelada' && (
                     status === 'en_curso'
                       ? <button onClick={() => changeStatus(schedule, 'finalizada')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-all cursor-pointer"><StopCircle className="w-3.5 h-3.5" weight="fill" /> Finalizar</button>
                       : <button onClick={() => changeStatus(schedule, 'en_curso')} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50 text-green-700 dark:text-green-400 flex items-center gap-1.5 transition-all cursor-pointer"><Play className="w-3.5 h-3.5" weight="fill" /> Iniciar sesión</button>
