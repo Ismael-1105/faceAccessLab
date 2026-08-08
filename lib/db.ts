@@ -4,7 +4,20 @@ import { Schedule } from './models.ts';
 import { Metrics } from './cloudwatch.ts';
 import { logger } from './observability.ts';
 
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+// ISS-10: por defecto se usa el resolvedor del sistema. Forzar 8.8.8.8 rompía
+// en redes institucionales que bloquean o interceptan el DNS saliente hacia
+// resolvedores externos, y como mongodb+srv:// necesita resolver registros SRV y
+// TXT, la conexión fallaba y TODOS los endpoints devolvían error. Es un fallo
+// que no aparece en el equipo de desarrollo y sí en la red de la presentación.
+// Solo se sobrescribe si DNS_SERVERS está definida de forma expresa.
+const customDns = process.env.DNS_SERVERS;
+if (customDns) {
+  const servers = customDns.split(',').map(s => s.trim()).filter(Boolean);
+  if (servers.length > 0) {
+    dns.setServers(servers);
+    logger.info('db.dns.override', { servers: servers.join(',') });
+  }
+}
 
 let isConnecting = false;
 let ranMigrations = false;
