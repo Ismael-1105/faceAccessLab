@@ -1,31 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { Fingerprint, ArrowLeft, CheckCircle, Envelope } from '@phosphor-icons/react';
-import { MOCK_AUTH_USERS } from './data.ts';
+import { Fingerprint, ArrowLeft, Info } from '@phosphor-icons/react';
 
+/**
+ * ISS-14. Esta pantalla validaba el correo contra una lista simulada del
+ * cliente, de modo que rechazaba a docentes reales y confirmaba un envío que
+ * nunca ocurría. Además permitía enumerar qué cuentas existían.
+ *
+ * El restablecimiento de contraseña no está implementado en esta versión, así
+ * que la pantalla lo dice en lugar de simularlo. No hay campo de correo ni
+ * respuesta que dependa de lo introducido: no hay nada que enumerar.
+ */
 export default function ForgotPasswordView() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    const exists = MOCK_AUTH_USERS.find(
-      u => u.email === email && (u.role === 'admin' || u.role === 'docente')
-    );
-
-    if (exists) {
-      setSent(true);
-    } else {
-      setError('No encontramos una cuenta docente con ese correo.');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-surface dark:bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
@@ -47,87 +37,34 @@ export default function ForgotPasswordView() {
               Recuperar contraseña
             </h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 text-center">
-              {sent
-                ? 'Revisa tu bandeja de entrada para restablecer tu acceso.'
-                : 'Ingresa tu correo institucional y te enviaremos un enlace.'}
+              Funcionalidad no disponible en esta versión.
             </p>
           </div>
 
-          {sent ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex flex-col items-center gap-4 py-4"
+          <div className="flex flex-col items-center gap-4 py-2">
+            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Info className="w-8 h-8 text-amber-600 dark:text-amber-400" weight="fill" />
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-sm font-bold text-zinc-900 dark:text-white">
+                El restablecimiento de contraseña aún no está disponible
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Esta versión no envía correos de recuperación. Para restablecer tu acceso,
+                solicítalo al administrador del laboratorio, que puede asignarte una
+                contraseña nueva desde el panel de usuarios.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="mt-2 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-accent-600 dark:text-accent-400 hover:underline transition-all cursor-pointer"
             >
-              <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" weight="fill" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-bold text-zinc-900 dark:text-white">Correo enviado</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Si <span className="font-mono text-accent-500">{email}</span> está registrado, recibirás las instrucciones en unos minutos.
-                </p>
-              </div>
-              <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 w-full text-center">
-                <p className="text-label text-zinc-400 dark:text-zinc-500 font-mono">
-                  Modo demostración — el correo no se envió realmente.
-                </p>
-              </div>
-              <button
-                onClick={() => router.push('/login')}
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-accent-600 dark:text-accent-400 hover:underline transition-all cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
-                Volver al inicio de sesión
-              </button>
-            </motion.div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-caption font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
-                  Correo institucional
-                </label>
-                <div className="relative">
-                  <Envelope className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" weight="regular" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="docente@faceaccess.lab"
-                    className="w-full text-sm p-2.5 pl-10 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all"
-                  />
-                </div>
-                <p className="mt-1 text-caption text-zinc-400 dark:text-zinc-500">Formato: nombre@dominio.ec</p>
-              </div>
-
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-caption text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg"
-                >
-                  {error}
-                </motion.p>
-              )}
-
-              <button
-                type="submit"
-                className="w-full bg-accent-600 hover:bg-accent-700 active:scale-[0.98] text-white font-semibold py-3 rounded-xl text-sm transition-all cursor-pointer"
-              >
-                Enviar enlace
-              </button>
-
-<button
-                type="button"
-                onClick={() => router.push('/login')}
-                className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-all cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
-                Volver al inicio de sesión
-              </button>
-            </form>
-          )}
+              <ArrowLeft className="w-3.5 h-3.5" weight="bold" />
+              Volver al inicio de sesión
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
